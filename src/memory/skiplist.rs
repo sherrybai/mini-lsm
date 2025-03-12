@@ -32,6 +32,7 @@ impl<K, V> Head<K, V> {
     }
 
     pub fn insert(self, key: K, value: V) -> Result<()> {
+        
         Ok(())
     }
 }
