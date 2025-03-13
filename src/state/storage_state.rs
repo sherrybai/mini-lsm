@@ -68,13 +68,16 @@ impl StorageState {
         self.current_memtable.put(key, TOMBSTONE)    
     }
 
-    fn freeze_memtable(&mut self) {
+    fn freeze_memtable(&mut self) -> Result<()> {
         let new_memtable = MemTable::new(self.get_next_sst_id());
 
         let _wlock = self.state_lock.write().unwrap();
         // clone is safe here because no other threads can update current_memtable while lock is held
+        self.current_memtable.freeze()?;
         self.frozen_memtables.push_front(self.current_memtable.clone());
         self.current_memtable = Arc::new(new_memtable);
+
+        Ok(())
     }
 
     fn get_next_sst_id(&mut self) -> usize {

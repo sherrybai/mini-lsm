@@ -1,6 +1,6 @@
-use std::sync::{atomic::{AtomicUsize, Ordering}, Arc};
+use std::sync::{atomic::{AtomicBool, AtomicUsize, Ordering}, Arc};
 
-use anyhow::{Ok, Result};
+use anyhow::{anyhow, Ok, Result};
 use bytes::Bytes;
 
 use crossbeam_skiplist::SkipMap;
@@ -9,6 +9,7 @@ pub struct MemTable {
     id: usize,
     entries: Arc<SkipMap<Bytes, Bytes>>,
     size_bytes: AtomicUsize,
+    mutable: AtomicBool,
 }
 
 impl Clone for MemTable {
@@ -17,6 +18,7 @@ impl Clone for MemTable {
             id: self.id,
             entries: self.entries.clone(),
             size_bytes: AtomicUsize::new(self.size_bytes.load(Ordering::SeqCst)),
+            mutable: AtomicBool::new(self.mutable.load(Ordering::SeqCst)),
         }
     }
 }
@@ -25,9 +27,10 @@ impl MemTable {
     pub fn new(id: usize) -> Self {
         let entries: SkipMap<Bytes, Bytes> = SkipMap::new();
         Self {
-            id: id,
+            id,
             entries: Arc::new(entries),
             size_bytes: AtomicUsize::new(0),
+            mutable: AtomicBool::new(true),
         }
     }
 
@@ -36,6 +39,9 @@ impl MemTable {
     }
 
     pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        if !self.mutable.load(Ordering::SeqCst) {
+            return Err(anyhow!("cannot modify immutable table"))
+        }
         self.entries
             .insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(value));
         self.size_bytes.fetch_add(key.len() + value.len(), Ordering::SeqCst);
@@ -47,10 +53,20 @@ impl MemTable {
     pub fn get_size_bytes(&self) -> usize {
         self.size_bytes.load(Ordering::SeqCst)
     }
+
+    pub fn freeze(&self) -> Result<()> {
+        let res = self.mutable.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst);
+        if res.is_err() {
+            return Err(anyhow!("memtable already frozen"));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{mem, sync::atomic::Ordering};
+
     use bytes::Bytes;
 
     use crate::memory::memtable::MemTable;
@@ -66,5 +82,9 @@ mod tests {
             memtable.get("hello".as_bytes()).unwrap(),
             Bytes::from("world".as_bytes())
         );
+
+        assert!(memtable.freeze().is_ok());
+        assert_eq!(memtable.mutable.load(Ordering::SeqCst), false);
+        assert!(memtable.freeze().is_err())
     }
 }
