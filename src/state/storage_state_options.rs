@@ -1,3 +1,3 @@
 pub struct StorageStateOptions {
-    memtable_max_size_bytes: usize
+    pub sst_max_size_bytes: usize
 }

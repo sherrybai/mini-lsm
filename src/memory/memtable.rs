@@ -1,15 +1,24 @@
-use std::sync::Arc;
+use std::sync::{atomic::{AtomicUsize, Ordering}, Arc};
 
 use anyhow::{Ok, Result};
 use bytes::Bytes;
 
 use crossbeam_skiplist::SkipMap;
 
-const TOMBSTONE: &[u8] = &[];
-
 pub struct MemTable {
     id: usize,
     entries: Arc<SkipMap<Bytes, Bytes>>,
+    size_bytes: AtomicUsize,
+}
+
+impl Clone for MemTable {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            entries: self.entries.clone(),
+            size_bytes: AtomicUsize::new(self.size_bytes.load(Ordering::SeqCst)),
+        }
+    }
 }
 
 impl MemTable {
@@ -18,27 +27,25 @@ impl MemTable {
         Self {
             id: id,
             entries: Arc::new(entries),
+            size_bytes: AtomicUsize::new(0),
         }
     }
 
     pub fn get(&self, key: &[u8]) -> Option<Bytes> {
-        let res = self.entries.get(key).map(|entry| entry.value().clone());
-        if let Some(val) = &res {
-            if val == TOMBSTONE {
-                return None
-            }
-        }
-        res
+        self.entries.get(key).map(|entry| entry.value().clone())
     }
 
     pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
         self.entries
             .insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(value));
+        self.size_bytes.fetch_add(key.len() + value.len(), Ordering::SeqCst);
         Ok(())
     }
 
-    pub fn delete(&self, key: &[u8]) -> Result<()> {
-        self.put(key,TOMBSTONE)
+    pub fn get_id(&self) -> usize { self.id }
+
+    pub fn get_size_bytes(&self) -> usize {
+        self.size_bytes.load(Ordering::SeqCst)
     }
 }
 
@@ -58,12 +65,6 @@ mod tests {
         assert_eq!(
             memtable.get("hello".as_bytes()).unwrap(),
             Bytes::from("world".as_bytes())
-        );
-
-        memtable.delete("hello".as_bytes()).unwrap();
-        assert_eq!(
-            memtable.get("hello".as_bytes()), 
-            None
         );
     }
 }
