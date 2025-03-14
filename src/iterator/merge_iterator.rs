@@ -1,4 +1,6 @@
-use std::{collections::BinaryHeap, iter};
+use std::collections::BinaryHeap;
+
+use bytes::Bytes;
 
 use crate::kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey};
 
@@ -27,22 +29,20 @@ impl<T: StorageIterator> StorageIterator for MergeIterator<T> {
     fn key(&self) -> Option<TimestampedKey> {
         self.heap.peek().map(|kv| kv.0.key.clone())
     }
-    fn value(&self) -> Option<&[u8]> {
-        self.heap.peek().map(|kv| &*kv.0.value)
+    fn value(&self) -> Option<Bytes> {
+        self.heap.peek().map(|kv| kv.0.value.clone())
     }
     fn next(&mut self) -> Option<KeyValuePair> {
         let res = self.heap.pop();
-        if res.is_none() {
-            return None
+        match res {
+            None => { return None },
+            Some((res_kv, index)) => {
+                let new_heap_kv = self.iterators_to_merge[index].next();
+                if let Some(new_kv) = new_heap_kv {
+                    self.heap.push((new_kv, index));
+                }
+                Some(res_kv)
+            }
         }
-        let (res_kv, index) = res.unwrap();
-        let new_heap_kv = self.iterators_to_merge[index].next();
-        if let Some(new_kv) = new_heap_kv {
-            self.heap.push((new_kv, index));
-        }
-        Some(res_kv)
-    }
-    fn is_valid(&self) -> bool {
-        true
     }
 }

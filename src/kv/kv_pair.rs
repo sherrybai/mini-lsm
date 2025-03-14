@@ -2,7 +2,7 @@ use bytes::Bytes;
 
 use super::timestamped_key::TimestampedKey;
 
-#[derive(Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Eq, Ord, PartialEq, PartialOrd, Clone)]
 pub struct KeyValuePair {
     pub key: TimestampedKey,
     pub value: Bytes,

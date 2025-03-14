@@ -7,7 +7,7 @@ use crossbeam_skiplist::SkipMap;
 
 pub struct MemTable {
     id: usize,
-    entries: Arc<SkipMap<Bytes, Bytes>>,
+    pub(super) entries: Arc<SkipMap<Bytes, Bytes>>,
     size_bytes: AtomicUsize,
     mutable: AtomicBool,
 }
