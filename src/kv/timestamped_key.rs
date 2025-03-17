@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-#[derive(Eq, Ord, PartialEq, PartialOrd, Clone)]
+#[derive(Eq, Ord, PartialEq, PartialOrd, Clone, Debug)]
 pub struct TimestampedKey {
     key: Bytes,
     timestamp_ms: usize,

@@ -1,10 +1,7 @@
-use bytes::Bytes;
-
-use crate::kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey};
+use crate::kv::kv_pair::KeyValuePair;
 
 pub mod merge_iterator;
 pub trait StorageIterator {
-    fn key(&self) -> Option<TimestampedKey>;
-    fn value(&self) -> Option<Bytes>;
+    fn peek(&mut self) -> Option<KeyValuePair>;
     fn next(&mut self) -> Option<KeyValuePair>;
 }

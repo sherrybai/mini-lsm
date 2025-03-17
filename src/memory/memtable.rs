@@ -65,7 +65,7 @@ impl MemTable {
 
 #[cfg(test)]
 mod tests {
-    use std::{mem, sync::atomic::Ordering};
+    use std::sync::atomic::Ordering;
 
     use bytes::Bytes;
 
