@@ -1,9 +1,9 @@
-use std::{collections::VecDeque, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
+use std::{collections::VecDeque, iter, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
 
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 
-use crate::memory::memtable::MemTable;
+use crate::{iterator::{merge_iterator::MergeIterator, StorageIterator}, kv::kv_pair::KeyValuePair, memory::{memtable::MemTable, memtable_iterator::MemTableIterator}};
 
 use super::storage_state_options::StorageStateOptions;
 
@@ -84,17 +84,20 @@ impl StorageState {
         self.counter.fetch_add(1, Ordering::SeqCst)
     }
 
-    // pub fn scan() -> {
-
-    // }
-
+    pub fn scan(&mut self) -> impl StorageIterator<Item = KeyValuePair> {
+        let mut iterators_to_merge = vec![MemTableIterator::new(&self.current_memtable)];
+        for memtable in &self.frozen_memtables {
+            iterators_to_merge.push(MemTableIterator::new(&memtable));
+        }
+        MergeIterator::new(iterators_to_merge)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
 
-    use crate::state::{storage_state::StorageState, storage_state_options::StorageStateOptions};
+    use crate::{kv::kv_pair::KeyValuePair, state::{storage_state::StorageState, storage_state_options::StorageStateOptions}};
 
     #[test]
     fn test_storage_state_get_put() {
@@ -166,5 +169,27 @@ mod tests {
             storage_state.get("does_not_exist".as_bytes()),
             None
         );
+    }
+
+    #[test]
+    fn test_scan() {
+        let options = StorageStateOptions {
+            sst_max_size_bytes: 4
+        };
+        let mut storage_state = StorageState::new(options);
+        storage_state
+            .put("k1".as_bytes(), "v1".as_bytes())
+            .unwrap();
+        // new kv entry can't fit in current memtable, so the memtable should be frozen
+        storage_state
+            .put("k2".as_bytes(), "v2".as_bytes())
+            .unwrap();
+        assert_eq!(
+            storage_state.frozen_memtables.len(),
+            1
+        );
+        for (i, item) in storage_state.scan().enumerate() {
+            assert!(item.key.get_key() == format!("k{}", i+1));
+        }
     }
 }

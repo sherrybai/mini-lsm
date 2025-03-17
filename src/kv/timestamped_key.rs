@@ -13,6 +13,10 @@ impl TimestampedKey {
             timestamp_ms: 0, // TODO: set timestamp later
         }
     }
+
+    pub fn get_key(&self) -> Bytes {
+        self.key.clone()
+    }
 }
 
 impl Ord for TimestampedKey {

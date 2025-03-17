@@ -14,7 +14,7 @@ impl<T: StorageIterator> MergeIterator<T>
 where
     T: Iterator<Item = KeyValuePair>,
 {
-    fn new(mut iterators_to_merge: Vec<T>) -> Self {
+    pub fn new(mut iterators_to_merge: Vec<T>) -> Self {
         let mut heap = BinaryHeap::new();
         for (index, iterator) in iterators_to_merge.iter_mut().enumerate() {
             let new_heap_kv = iterator.next();
