@@ -54,7 +54,7 @@ impl StorageState {
 
     fn put(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
         if self.current_memtable.get_size_bytes() + key.len() + value.len() > self.options.sst_max_size_bytes {
-            self.freeze_memtable();
+            self.freeze_memtable()?;
         }
         let _rlock = self.state_lock.read().unwrap();
         self.current_memtable.put(key, value)
