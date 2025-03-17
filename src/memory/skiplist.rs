@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::ptr::NonNull;
 use anyhow::Result;
 
@@ -28,12 +30,11 @@ impl<K, V> Head<K, V> {
     }
 
     pub fn get(self, key: K) -> Option<V> {
-        None
+        todo!()
     }
 
     pub fn insert(self, key: K, value: V) -> Result<()> {
-        
-        Ok(())
+        todo!()
     }
 }
 
