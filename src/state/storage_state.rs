@@ -18,7 +18,7 @@ pub struct StorageState {
 }
 
 impl StorageState {
-    fn new(options: StorageStateOptions) -> Self {
+    pub fn new(options: StorageStateOptions) -> Self {
         let counter: AtomicUsize = AtomicUsize::new(0);
         let current_memtable = Arc::new(MemTable::new(counter.fetch_add(1, Ordering::SeqCst)));
         // newest to oldest frozen memtables
@@ -32,7 +32,7 @@ impl StorageState {
             options,
         }
     }
-    fn get(&mut self, key: &[u8]) -> Option<Bytes> {
+    pub fn get(&mut self, key: &[u8]) -> Option<Bytes> {
         let _rlock = self.state_lock.read().unwrap();
         
         let mut res = self.current_memtable.get(key);
@@ -52,7 +52,7 @@ impl StorageState {
         res
     }
 
-    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
+    pub fn put(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
         if self.current_memtable.get_size_bytes() + key.len() + value.len() > self.options.sst_max_size_bytes {
             self.freeze_memtable()?;
         }
@@ -60,7 +60,7 @@ impl StorageState {
         self.current_memtable.put(key, value)
     }
 
-    fn delete(&mut self, key: &[u8]) -> Result<()> {
+    pub fn delete(&mut self, key: &[u8]) -> Result<()> {
         if self.get(key).is_none() {
             return Err(anyhow!("key cannot be deleted because it does not exist"))
         }
@@ -83,6 +83,11 @@ impl StorageState {
     fn get_next_sst_id(&mut self) -> usize {
         self.counter.fetch_add(1, Ordering::SeqCst)
     }
+
+    // pub fn scan() -> {
+
+    // }
+
 }
 
 #[cfg(test)]

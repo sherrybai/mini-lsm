@@ -37,6 +37,10 @@ impl StorageIterator for MemTableIterator {
     fn peek(&mut self) -> Option<KeyValuePair> {
         self.current_kv.clone()
     }
+}
+
+impl Iterator for MemTableIterator {
+    type Item = KeyValuePair;
     fn next(&mut self) -> Option<KeyValuePair> {
         let next = self.internal.with_sub_iterator_mut(|iter| iter.next());
         let res = next.map(

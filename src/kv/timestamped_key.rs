@@ -27,7 +27,7 @@ impl Ord for TimestampedKey {
 
 impl PartialOrd for TimestampedKey {
     fn partial_cmp(&self, other: &TimestampedKey) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 

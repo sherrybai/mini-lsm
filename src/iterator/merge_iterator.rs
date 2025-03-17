@@ -10,7 +10,10 @@ pub struct MergeIterator<T: StorageIterator> {
     iterators_to_merge: Vec<T>,
 }
 
-impl<T: StorageIterator> MergeIterator<T> {
+impl<T: StorageIterator> MergeIterator<T>
+where
+    T: Iterator<Item = KeyValuePair>,
+{
     fn new(mut iterators_to_merge: Vec<T>) -> Self {
         let mut heap = BinaryHeap::new();
         for (index, iterator) in iterators_to_merge.iter_mut().enumerate() {
@@ -26,10 +29,20 @@ impl<T: StorageIterator> MergeIterator<T> {
     }
 }
 
-impl<T: StorageIterator> StorageIterator for MergeIterator<T> {
+impl<T: StorageIterator> StorageIterator for MergeIterator<T> 
+where
+    T: Iterator<Item = KeyValuePair>,
+{
     fn peek(&mut self) -> Option<KeyValuePair> {
         self.heap.peek().map(|Reverse((res_kv, _))| res_kv.clone())
     }
+}
+
+impl<T: StorageIterator> Iterator for MergeIterator<T>
+where
+    T: Iterator<Item = KeyValuePair>,
+{
+    type Item = KeyValuePair;
     fn next(&mut self) -> Option<KeyValuePair> {
         let res = self.heap.pop();
         match res {
@@ -42,7 +55,7 @@ impl<T: StorageIterator> StorageIterator for MergeIterator<T> {
                 Some(res_kv)
             }
         }
-    }
+    }    
 }
 
 #[cfg(test)]
