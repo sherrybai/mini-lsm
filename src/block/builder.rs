@@ -20,9 +20,15 @@ impl BlockBuilder {
     }
 
     pub fn add(&mut self, kv_pair: KeyValuePair) -> Result<()> {
-        let kv_as_bytes: Vec<u8> = vec![kv_pair.key.get_key(), kv_pair.value]
-            .iter()
-            .map(|bytes| bytes.to_vec())
+        let key_len_bytes = u16::try_from(kv_pair.key.get_key().len())?.to_be_bytes();
+        let value_len_bytes = u16::try_from(kv_pair.value.len())?.to_be_bytes();
+        let kv_as_bytes: Vec<u8> = vec![
+            key_len_bytes.to_vec(),
+            kv_pair.key.get_key().to_vec(), 
+            value_len_bytes.to_vec(),
+            kv_pair.value.to_vec()
+        ]
+            .into_iter()
             .flatten()
             .collect();
         self.offsets.push(self.current_offset);
@@ -54,7 +60,20 @@ mod tests {
         assert!(block_builder.add(KeyValuePair { key: TimestampedKey::new("k2".as_bytes().into()), value: "v2".as_bytes().into() }).is_ok());
 
         let actual = block_builder.build();
-        let expected = Block::new("k1v1k2v2".as_bytes().to_vec(), vec![0, 4], 8);
+
+        let mut expected_data = vec![0,2];
+        expected_data.extend("k1".as_bytes());
+        expected_data.extend(vec![0,2]);
+        expected_data.extend("v1".as_bytes());
+        expected_data.extend(vec![0,2]);
+        expected_data.extend("k2".as_bytes());
+        expected_data.extend(vec![0,2]);
+        expected_data.extend("v2".as_bytes());
+        let expected = Block::new(
+            expected_data, 
+            vec![0, 8], 
+            16
+        );
         assert_eq!(actual, expected);
     }
 }

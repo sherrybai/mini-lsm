@@ -60,10 +60,21 @@ mod tests {
 
     #[test]
     fn test_encode_decode() {
-        let block = Block::new("k1v1k2v2".as_bytes().to_vec(), vec![0, 4], 8);
-
-        let mut expected = "k1v1k2v2".as_bytes().to_vec();  // data block
-        expected.extend(vec![0,0,0,4,0,8]);  // offset block
+        let mut data = vec![0,2];
+        data.extend("k1".as_bytes());
+        data.extend(vec![0,2]);
+        data.extend("v1".as_bytes());
+        data.extend(vec![0,2]);
+        data.extend("k2".as_bytes());
+        data.extend(vec![0,2]);
+        data.extend("v2".as_bytes());
+        let block = Block::new(
+            data.clone(), 
+            vec![0, 8], 
+            16
+        );
+        let mut expected = data.clone();  // data block
+        expected.extend(vec![0,0,0,8,0,16]);  // offset block
 
         let actual = block.encode();
         assert_eq!(actual, expected);
