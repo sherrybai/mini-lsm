@@ -7,7 +7,7 @@ use ouroboros::self_referencing;
 
 use crate::{iterator::StorageIterator, kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey}};
 
-use super::memtable::MemTable;
+use super::MemTable;
 
 pub struct MemTableIterator {
     internal: MemTableIteratorInternal,

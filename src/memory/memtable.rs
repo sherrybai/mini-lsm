@@ -1,3 +1,5 @@
+pub mod iterator;
+
 use std::sync::{atomic::{AtomicBool, AtomicUsize, Ordering}, Arc};
 
 use anyhow::{anyhow, Ok, Result};

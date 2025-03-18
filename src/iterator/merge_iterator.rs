@@ -63,7 +63,7 @@ mod tests {
     use crate::{
         iterator::StorageIterator,
         kv::timestamped_key::TimestampedKey,
-        memory::{memtable::MemTable, memtable_iterator::MemTableIterator},
+        memory::memtable::{MemTable, iterator::MemTableIterator},
     };
 
     use super::MergeIterator;

@@ -1,9 +1,9 @@
-use std::{collections::VecDeque, iter, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
+use std::{collections::VecDeque, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
 
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 
-use crate::{iterator::{merge_iterator::MergeIterator, StorageIterator}, kv::kv_pair::KeyValuePair, memory::{memtable::MemTable, memtable_iterator::MemTableIterator}};
+use crate::{iterator::{merge_iterator::MergeIterator, StorageIterator}, kv::kv_pair::KeyValuePair, memory::memtable::{MemTable, iterator::MemTableIterator}};
 
 use super::storage_state_options::StorageStateOptions;
 
