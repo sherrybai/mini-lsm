@@ -101,3 +101,51 @@ impl Iterator for BlockIterator {
         self.current_kv.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use bytes::Bytes;
+
+    use crate::{block::{builder::BlockBuilder, iterator::BlockIterator}, iterator::StorageIterator, kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey}};
+
+    #[test]
+    fn test_create_and_seek_to_first() {
+        let mut block_builder = BlockBuilder::new();
+        assert!(block_builder.add(KeyValuePair { key: TimestampedKey::new("k1".as_bytes().into()), value: "v1".as_bytes().into() }).is_ok());
+        assert!(block_builder.add(KeyValuePair { key: TimestampedKey::new("k2".as_bytes().into()), value: "v2".as_bytes().into() }).is_ok());
+
+        let block = Arc::new(block_builder.build());
+
+        let mut block_iterator = BlockIterator::create_and_seek_to_first(block);
+        assert!(block_iterator.peek().is_some());
+        assert_eq!(block_iterator.peek().expect("checked for none").key.get_key(), "k1".as_bytes());
+
+        for (i, kv) in block_iterator.enumerate() {
+            assert_eq!(kv.key.get_key(), format!("k{}", i+1).as_bytes());
+        }
+    }
+
+    #[test]
+    fn test_seek_to_key() {
+        let mut block_builder = BlockBuilder::new();
+        assert!(block_builder.add(KeyValuePair { key: TimestampedKey::new("k1".as_bytes().into()), value: "v1".as_bytes().into() }).is_ok());
+        assert!(block_builder.add(KeyValuePair { key: TimestampedKey::new("k2".as_bytes().into()), value: "v2".as_bytes().into() }).is_ok());
+
+        let block = Arc::new(block_builder.build());
+
+        let mut block_iterator = BlockIterator::create_and_seek_to_first(block.clone());
+        let key = TimestampedKey::new(Bytes::copy_from_slice("k2".as_bytes()));
+        block_iterator.seek_to_key(key.clone());
+        assert!(block_iterator.peek().is_some());
+        assert_eq!(block_iterator.peek().expect("checked for none").key.get_key(), "k2".as_bytes());
+
+        block_iterator = BlockIterator::create_and_seek_to_key(block.clone(), key.clone());
+        assert!(block_iterator.peek().is_some());
+        assert_eq!(block_iterator.peek().expect("checked for none").key.get_key(), "k2".as_bytes());
+    }
+
+    
+
+}
