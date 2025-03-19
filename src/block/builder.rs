@@ -70,6 +70,7 @@ mod tests {
                 value: "v2".as_bytes().into()
             })
             .is_ok());
+        let estimated_size = block_builder.get_block_size();
 
         let actual = block_builder.build();
 
@@ -83,5 +84,8 @@ mod tests {
         expected_data.extend("v2".as_bytes());
         let expected = Block::new(expected_data, vec![0, 8], 16);
         assert_eq!(actual, expected);
+
+        // check that our calculated size is correct
+        assert_eq!(estimated_size, actual.encode().len())
     }
 }
