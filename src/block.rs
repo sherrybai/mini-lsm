@@ -1,5 +1,6 @@
 pub mod builder;
 pub mod iterator;
+pub mod metadata;
 
 #[derive(Debug, PartialEq)]
 pub struct Block {
