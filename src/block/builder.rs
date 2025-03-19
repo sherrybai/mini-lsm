@@ -38,11 +38,11 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub fn build(&self) -> Block {
+    pub fn build(self) -> Block {
         Block::new(
-            self.data.clone(),
-            self.offsets.clone(),
-            self.current_offset.clone()
+            self.data,
+            self.offsets,
+            self.current_offset
         )
     }
 }
