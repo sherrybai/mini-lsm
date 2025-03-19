@@ -38,8 +38,8 @@ impl BlockMetadata {
         encoded
     }
 
-    pub fn decode(encoded_block_meta: Vec<u8>) -> (Self, usize) {
-        let mut current_index = 0;
+    pub fn decode(encoded_block_meta: &[u8], start_index: usize) -> (Self, usize) {
+        let mut current_index = start_index;
         let offset: u32 = u32::from_be_bytes(
             encoded_block_meta[current_index..current_index + 4]
                 .try_into()
@@ -79,6 +79,18 @@ impl BlockMetadata {
             current_index,
         )
     }
+
+    pub fn decode_to_list(encoded_block_meta: &[u8]) -> Vec<Self> {
+        let mut current_index = 0;
+        let mut res: Vec<Self> = Vec::new();
+        let encoded_size = encoded_block_meta.len();
+        while current_index < encoded_size {
+            let (decoded_block_meta, next_index) = Self::decode(&encoded_block_meta, current_index);
+            res.push(decoded_block_meta);
+            current_index = next_index;
+        }
+        res
+    }
 }
 
 #[cfg(test)]
@@ -98,8 +110,21 @@ mod tests {
         let encoded_size = actual.len();
         assert_eq!(actual, expected);
 
-        let (decoded_block_meta, block_meta_size) = BlockMetadata::decode(actual);
+        let (decoded_block_meta, block_meta_size) = BlockMetadata::decode(&actual, 0);
         assert_eq!(block_meta, decoded_block_meta);
         assert_eq!(block_meta_size, encoded_size);
+    }
+
+    #[test]
+    fn test_decode_to_list() {
+        let block_meta_1 = BlockMetadata::new(4, "k1".as_bytes().into(), "k2".as_bytes().into());
+        let block_meta_2 = BlockMetadata::new(4, "k3".as_bytes().into(), "k4".as_bytes().into());
+        let mut encoded = block_meta_1.encode();
+        encoded.extend(block_meta_2.encode());
+
+        let decoded_list = BlockMetadata::decode_to_list(&encoded);
+        assert_eq!(decoded_list.len(), 2);
+        assert_eq!(decoded_list[0], block_meta_1);
+        assert_eq!(decoded_list[1], block_meta_2);
     }
 }
