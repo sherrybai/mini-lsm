@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_create_and_seek_to_first() {
-        let mut block_builder = BlockBuilder::new();
+        let mut block_builder = BlockBuilder::new(32);
         assert!(block_builder
             .add(KeyValuePair {
                 key: TimestampedKey::new("k1".as_bytes().into()),
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_seek_to_key() {
-        let mut block_builder = BlockBuilder::new();
+        let mut block_builder = BlockBuilder::new(32);
         assert!(block_builder
             .add(KeyValuePair {
                 key: TimestampedKey::new("k1".as_bytes().into()),

@@ -2,13 +2,13 @@ use bytes::Bytes;
 
 #[derive(Debug, PartialEq)]
 pub struct BlockMetadata {
-    offset: u16,
+    offset: u32,
     first_key: Bytes,
     last_key: Bytes,
 }
 
 impl BlockMetadata {
-    pub fn new(offset: u16, first_key: Bytes, last_key: Bytes) -> Self {
+    pub fn new(offset: u32, first_key: Bytes, last_key: Bytes) -> Self {
         Self {offset, first_key, last_key}
     }
 
@@ -28,7 +28,7 @@ impl BlockMetadata {
 
     pub fn decode(encoded_block_meta: Vec<u8>) -> Self {
         let mut current_index = 0;
-        let offset = u16::from_be_bytes(encoded_block_meta[current_index..current_index+2].try_into().expect("chunk of size 2"));
+        let offset = u32::from_be_bytes(encoded_block_meta[current_index..current_index+4].try_into().expect("chunk of size 4"));
         current_index += 2;
         let first_key_size: usize = u16::from_be_bytes(encoded_block_meta[current_index..current_index+2].try_into().expect("chunk of size 2")).into();
         current_index += 2;
@@ -53,7 +53,7 @@ mod tests {
     #[test]
     fn test_encode_decode() {
         let block_meta = BlockMetadata::new(4, "k1".as_bytes().into(), "k2".as_bytes().into());
-        let mut expected = vec![0,4];
+        let mut expected = vec![0,0,0,4];
         expected.extend(vec![0,2]);
         expected.extend("k1".as_bytes());
         expected.extend(vec![0,2]);

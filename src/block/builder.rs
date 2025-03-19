@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use crate::kv::kv_pair::KeyValuePair;
 
@@ -8,18 +8,24 @@ pub struct BlockBuilder {
     data: Vec<u8>,
     offsets: Vec<u16>,
     current_offset: u16,
+    block_size: usize,
 }
 
 impl BlockBuilder {
-    pub fn new() -> Self {
+    pub fn new(block_size: usize) -> Self {
         Self {
             data: Vec::new(),
             offsets: Vec::new(),
             current_offset: 0,
+            block_size,
         }
     }
 
     pub fn add(&mut self, kv_pair: KeyValuePair) -> Result<()> {
+        if self.get_block_size_with_kv(&kv_pair) > self.block_size {
+            return Err(anyhow!("max block size reached"));
+        }
+
         let key_len_bytes = u16::try_from(kv_pair.key.get_key().len())?.to_be_bytes();
         let value_len_bytes = u16::try_from(kv_pair.value.len())?.to_be_bytes();
         let kv_as_bytes: Vec<u8> = vec![
@@ -38,8 +44,8 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub fn build(self) -> Block {
-        Block::new(self.data, self.offsets, self.current_offset)
+    pub fn build(&self) -> Block {
+        Block::new(self.data.clone(), self.offsets.clone(), self.current_offset)
     }
 
     pub fn get_block_size(&self) -> usize {
@@ -47,17 +53,26 @@ impl BlockBuilder {
         + 2 * self.offsets.len() // each offset is 2 bytes
         + 2 // end of data offset is 2 bytes
     }
+
+    pub fn get_block_size_with_kv(&self, kv: &KeyValuePair) -> usize {
+        self.get_block_size()
+        + 2 // key length
+        + kv.key.get_key().len()
+        + 2 // value length
+        + kv.value.len()
+        + 2 // length of new offset
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey};
+    use crate::{block, kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey}};
 
     use super::{Block, BlockBuilder};
 
     #[test]
     fn test_blockbuilder_build() {
-        let mut block_builder = BlockBuilder::new();
+        let mut block_builder = BlockBuilder::new(32);
         assert!(block_builder
             .add(KeyValuePair {
                 key: TimestampedKey::new("k1".as_bytes().into()),
@@ -87,5 +102,22 @@ mod tests {
 
         // check that our calculated size is correct
         assert_eq!(estimated_size, actual.encode().len())
+    }
+
+    #[test]
+    fn test_blockbuilder_check_block_size() {
+        let mut block_builder = BlockBuilder::new(12);
+        assert!(block_builder
+            .add(KeyValuePair {
+                key: TimestampedKey::new("k1".as_bytes().into()),
+                value: "v1".as_bytes().into()
+            })
+            .is_ok());
+        assert!(block_builder
+            .add(KeyValuePair {
+                key: TimestampedKey::new("k2".as_bytes().into()),
+                value: "v2".as_bytes().into()
+            })
+            .is_err());
     }
 }
