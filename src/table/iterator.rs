@@ -1,11 +1,15 @@
-use crate::{iterator::StorageIterator, kv::kv_pair::KeyValuePair};
+use crate::{block::metadata::BlockMetadata, iterator::StorageIterator, kv::kv_pair::KeyValuePair};
+
+use super::SST;
 
 pub struct SSTIterator {
-
+    block_meta_list: Vec<BlockMetadata>,
 }
 
 impl SSTIterator {
-
+    fn new(sst: SST) -> Self {
+        todo!()
+    }
 }
 
 impl StorageIterator for SSTIterator {

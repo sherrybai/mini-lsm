@@ -82,7 +82,14 @@ impl SSTBuilder {
 
         // dump to file
         let file = File::create(path, buffer)?;
-        Ok(SST::new(id, file))
+        Ok(
+            SST::new(
+                id, 
+                file, 
+                self.block_meta_list,
+                self.offset,
+            )
+        )
     }
 
     pub fn get_estimated_size(&self) -> usize {
@@ -130,10 +137,8 @@ mod tests {
         // try build
         let dir = tempdir().unwrap();
         let path = dir.path().join("test_sst_build.sst");
-        let sst = builder.build(0, path);
-        assert!(sst.is_ok());
-        let mut file = sst.expect("just checked ok").file;
-        let file_contents = file.get_contents_as_bytes().unwrap();
+        let mut sst = builder.build(0, path).unwrap();
+        let file_contents = sst.file.get_contents_as_bytes().unwrap();
 
         // check that data size, meta size, and offset value are correct
         let meta_offset = u32::from_be_bytes(file_contents[file_contents.len()-4..].try_into().expect("chunk of size 4"));
@@ -142,5 +147,8 @@ mod tests {
         - 2 * 12; // two metadata blocks of 12 bytes each (4 for offset, 4 each for first and last key)
         // start index of meta blocks should be equal to data size in bytes
         assert_eq!(meta_offset, u32::try_from(expected_data_size).expect("must fit in 4 bytes"));
+
+        // assert correctness of meta offset field in sst struct
+        assert_eq!(meta_offset, sst.meta_block_offset);
     }
 }
