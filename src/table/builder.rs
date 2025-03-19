@@ -1,9 +1,12 @@
+use std::path::Path;
+
 use anyhow::Result;
 use bytes::Bytes;
 
 use crate::{
     block::{builder::BlockBuilder, metadata::BlockMetadata},
     kv::kv_pair::KeyValuePair,
+    table::File,
 };
 
 use super::SST;
@@ -37,8 +40,6 @@ impl SSTBuilder {
         // check if block is full
         if self.block_builder.get_block_size_with_kv(&kv) >= self.block_size {
             self.finalize_block();
-            // create new block
-            self.block_builder = BlockBuilder::new(self.block_size);
             // update metadata
             self.offset =
                 u32::try_from(self.block_data.len()).expect("size of SST must fit in 4 bytes");
@@ -59,14 +60,29 @@ impl SSTBuilder {
             BlockMetadata::new(self.offset, self.first_key.clone(), self.last_key.clone());
         self.block_meta_list.push(block_meta);
         // build block
-        let block = self.block_builder.build();
+        let old_block_builder =
+            std::mem::replace(&mut self.block_builder, BlockBuilder::new(self.block_size));
+        let block = old_block_builder.build();
         self.block_data.extend(block.encode());
     }
 
-    pub fn build(&mut self) -> SST {
+    pub fn build(mut self, id: usize, path: impl AsRef<Path>) -> Result<SST> {
         // finalize last block
         self.finalize_block();
-        todo!();
+        self.offset =
+            u32::try_from(self.block_data.len()).expect("size of SST must fit in 4 bytes");
+
+        // encode SST
+        let mut buffer: Vec<u8> = Vec::new();
+        buffer.extend(self.block_data);
+        for block_meta in self.block_meta_list.iter() {
+            buffer.extend(block_meta.encode());
+        }
+        buffer.extend(self.offset.to_be_bytes());
+
+        // dump to file
+        let file = File::create(path, buffer)?;
+        Ok(SST::new(id, file))
     }
 
     pub fn get_estimated_size(&self) -> usize {
@@ -78,13 +94,15 @@ impl SSTBuilder {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+
     use crate::kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey};
 
     use super::SSTBuilder;
 
     #[test]
-    fn test_add() {
-        let mut builder = SSTBuilder::new(25);
+    fn test_build() {
+        let mut builder: SSTBuilder = SSTBuilder::new(25);
         assert!(builder
             .add(KeyValuePair {
                 key: TimestampedKey::new("k1".as_bytes().into()),
@@ -108,5 +126,21 @@ mod tests {
         // new block started
         assert_eq!(builder.block_meta_list.len(), 1);
         assert!(builder.block_data.len() > 0);
+
+        // try build
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test_sst_build.sst");
+        let sst = builder.build(0, path);
+        assert!(sst.is_ok());
+        let mut file = sst.expect("just checked ok").file;
+        let file_contents = file.get_contents_as_bytes().unwrap();
+
+        // check that data size, meta size, and offset value are correct
+        let meta_offset = u32::from_be_bytes(file_contents[file_contents.len()-4..].try_into().expect("chunk of size 4"));
+        let expected_data_size = file_contents.len() 
+        - 4 // size of meta_offset
+        - 2 * 12; // two metadata blocks of 12 bytes each (4 for offset, 4 each for first and last key)
+        // start index of meta blocks should be equal to data size in bytes
+        assert_eq!(meta_offset, u32::try_from(expected_data_size).expect("must fit in 4 bytes"));
     }
 }

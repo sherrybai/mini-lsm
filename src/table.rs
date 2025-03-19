@@ -14,6 +14,14 @@ pub struct SST {
 }
 
 impl SST {
+    pub fn new(id: usize, file: File) -> Self {
+        Self {
+            id,
+            file,
+            meta_blocks: Vec::new(),
+            meta_block_offset: 0,
+        }
+    }
 }
 
 #[cfg(test)]

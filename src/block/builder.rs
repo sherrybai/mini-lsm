@@ -44,8 +44,8 @@ impl BlockBuilder {
         Ok(())
     }
 
-    pub fn build(&self) -> Block {
-        Block::new(self.data.clone(), self.offsets.clone(), self.current_offset)
+    pub fn build(self) -> Block {
+        Block::new(self.data, self.offsets, self.current_offset)
     }
 
     pub fn get_block_size(&self) -> usize {
@@ -66,7 +66,7 @@ impl BlockBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::{block, kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey}};
+    use crate::kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey};
 
     use super::{Block, BlockBuilder};
 
