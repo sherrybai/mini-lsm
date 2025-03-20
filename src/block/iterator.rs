@@ -16,7 +16,7 @@ pub struct BlockIterator {
 }
 
 impl BlockIterator {
-    fn create_and_seek_to_first(block: Arc<Block>) -> Self {
+    pub fn create_and_seek_to_first(block: Arc<Block>) -> Self {
         let mut res = Self {
             block,
             current_index: 0,
@@ -26,7 +26,7 @@ impl BlockIterator {
         res
     }
 
-    fn create_and_seek_to_key(block: Arc<Block>, key: TimestampedKey) -> Self {
+    pub fn create_and_seek_to_key(block: Arc<Block>, key: TimestampedKey) -> Self {
         let mut res = Self {
             block,
             current_index: 0,
@@ -36,11 +36,11 @@ impl BlockIterator {
         res
     }
 
-    fn seek_to_first(&mut self) {
+    pub fn seek_to_first(&mut self) {
         self.current_index = 0;
     }
 
-    fn seek_to_key(&mut self, key: TimestampedKey) {
+    pub fn seek_to_key(&mut self, key: TimestampedKey) {
         // seek to first key greater than or equal to key
         // binary search for the key in range 0..num_elements
         let (mut lo, mut hi) = (0, self.block.offsets.len() - 1);

@@ -91,6 +91,14 @@ impl BlockMetadata {
         }
         res
     }
+
+    pub fn get_first_key(&self) -> &Bytes {
+        &self.first_key
+    }
+
+    pub fn get_last_key(&self) -> &Bytes {
+        &self.last_key
+    }
 }
 
 #[cfg(test)]

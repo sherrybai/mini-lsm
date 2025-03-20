@@ -1,6 +1,8 @@
 use std::{io::Read, path::Path};
 
 use anyhow::Result;
+
+use crate::block::Block;
 pub struct File {
     file: std::fs::File,
     size: usize
@@ -23,5 +25,9 @@ impl File {
 
     pub fn get_size(&self) -> usize {
         self.size
+    }
+
+    pub fn load_block_to_mem(&self, block_index: usize) -> Block {
+        todo!()
     }
 }
