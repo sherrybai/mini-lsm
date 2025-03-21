@@ -9,7 +9,7 @@ use crate::{
     table::File,
 };
 
-use super::{block_cache::{self, BlockCache}, SST};
+use super::{block_cache::BlockCache, SST};
 
 pub struct SSTBuilder {
     block_builder: BlockBuilder,

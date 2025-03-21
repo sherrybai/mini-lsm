@@ -8,10 +8,13 @@ use crate::block::Block;
 use crate::kv::timestamped_key::TimestampedKey;
 use crate::table::file::File;
 
+#[cfg(test)]
+mod test_utils;
+
+pub mod block_cache;
 pub mod builder;
 pub mod file;
 pub mod iterator;
-pub mod block_cache;
 
 // in-memory representation of a single SST file on disk
 pub struct SST {
@@ -35,7 +38,7 @@ impl SST {
             file,
             meta_blocks,
             meta_block_offset,
-            block_cache
+            block_cache,
         }
     }
 
@@ -64,5 +67,40 @@ impl SST {
             }
         }
         (lo + hi + 1) / 2
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::kv::timestamped_key::TimestampedKey;
+
+    use super::test_utils::build_sst;
+
+    #[test]
+    fn test_load_block_to_mem() {
+        let mut sst = build_sst();
+        let mut expected_block_data = vec![];
+        expected_block_data.extend(sst.load_block_to_mem(0).unwrap().encode());
+        expected_block_data.extend(sst.load_block_to_mem(1).unwrap().encode());
+        let actual_block_data =
+            &sst.file.get_contents_as_bytes().unwrap()[..expected_block_data.len()];
+        assert_eq!(actual_block_data, expected_block_data);
+    }
+
+    #[test]
+    fn test_get_block_index_for_key() {
+        let sst = build_sst();
+        assert_eq!(
+            sst.get_block_index_for_key(&TimestampedKey::new("k1".as_bytes().into())),
+            0
+        );
+        assert_eq!(
+            sst.get_block_index_for_key(&TimestampedKey::new("k2".as_bytes().into())),
+            0
+        );
+        assert_eq!(
+            sst.get_block_index_for_key(&TimestampedKey::new("k3".as_bytes().into())),
+            1
+        );
     }
 }

@@ -1,9 +1,9 @@
-use std::{cmp::Ordering, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
 
 use crate::{
-    block::{iterator::BlockIterator, metadata::BlockMetadata},
+    block::iterator::BlockIterator,
     iterator::StorageIterator,
     kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey},
 };
@@ -108,41 +108,11 @@ impl Iterator for SSTIterator {
 mod tests {
     use std::sync::Arc;
 
-    use tempfile::tempdir;
-
     use crate::{
         iterator::StorageIterator,
-        kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey},
-        table::{builder::SSTBuilder, iterator::SSTIterator, SST},
+        kv::timestamped_key::TimestampedKey,
+        table::{iterator::SSTIterator, test_utils::build_sst},
     };
-
-    fn build_sst() -> SST {
-        let mut builder: SSTBuilder = SSTBuilder::new(25);
-        // add three key-value pairs
-        assert!(builder
-            .add(KeyValuePair {
-                key: TimestampedKey::new("k1".as_bytes().into()),
-                value: "v1".as_bytes().into(),
-            })
-            .is_ok());
-        assert!(builder
-            .add(KeyValuePair {
-                key: TimestampedKey::new("k2".as_bytes().into()),
-                value: "v2".as_bytes().into(),
-            })
-            .is_ok());
-        assert!(builder
-            .add(KeyValuePair {
-                key: TimestampedKey::new("k3".as_bytes().into()),
-                value: "v3".as_bytes().into(),
-            })
-            .is_ok());
-        // build
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("test_sst_iterate.sst");
-        let sst = builder.build(0, path, None).unwrap();
-        sst
-    }
 
     #[test]
     fn test_create_and_seek_to_first() {
