@@ -9,7 +9,7 @@ use crate::{
     table::File,
 };
 
-use super::SST;
+use super::{block_cache::{self, BlockCache}, SST};
 
 pub struct SSTBuilder {
     block_builder: BlockBuilder,
@@ -66,7 +66,7 @@ impl SSTBuilder {
         self.block_data.extend(block.encode());
     }
 
-    pub fn build(mut self, id: usize, path: impl AsRef<Path>) -> Result<SST> {
+    pub fn build(mut self, id: usize, path: impl AsRef<Path>, block_cache: Option<BlockCache>) -> Result<SST> {
         // finalize last block
         self.finalize_block();
         self.offset =
@@ -88,6 +88,7 @@ impl SSTBuilder {
                 file, 
                 self.block_meta_list,
                 self.offset,
+                block_cache,
             )
         )
     }
@@ -137,7 +138,7 @@ mod tests {
         // try build
         let dir = tempdir().unwrap();
         let path = dir.path().join("test_sst_build.sst");
-        let mut sst = builder.build(0, path).unwrap();
+        let mut sst = builder.build(0, path, None).unwrap();
         let file_contents: Vec<u8> = sst.file.get_contents_as_bytes().unwrap();
 
         // check that data size, meta size, and offset value are correct

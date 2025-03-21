@@ -3,7 +3,7 @@ use std::{cmp::Ordering, sync::Arc};
 use anyhow::Result;
 
 use crate::{
-    block::{iterator::BlockIterator, metadata::BlockMetadata, Block},
+    block::{iterator::BlockIterator, metadata::BlockMetadata},
     iterator::StorageIterator,
     kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey},
 };
@@ -21,7 +21,7 @@ pub struct SSTIterator {
 impl SSTIterator {
     pub fn create_and_seek_to_first(sst: Arc<SST>) -> Result<Self> {
         // load the first block
-        let block = Self::load_block_to_mem(sst.clone(), 0)?;
+        let block = sst.load_block_to_mem( 0)?;
         let mut block_iterator = BlockIterator::create_and_seek_to_first(Arc::new(block));
         let current_kv = block_iterator.peek();
         Ok(Self {
@@ -34,8 +34,8 @@ impl SSTIterator {
     }
 
     pub fn create_and_seek_to_key(sst: Arc<SST>, key: TimestampedKey) -> Result<Self> {
-        let block_index = Self::get_block_index_for_key(sst.clone(), &key);
-        let block = Self::load_block_to_mem(sst.clone(), block_index)?;
+        let block_index = sst.get_block_index_for_key(&key);
+        let block = sst.load_block_to_mem(block_index)?;
         let mut block_iterator = BlockIterator::create_and_seek_to_key(Arc::new(block), key);
         let current_kv = block_iterator.peek();
         Ok(Self {
@@ -48,42 +48,11 @@ impl SSTIterator {
     }
 
     pub fn seek_to_key(&mut self, key: TimestampedKey) -> Result<()> {
-        self.block_index = Self::get_block_index_for_key(self.sst.clone(), &key);
-        let block = Self::load_block_to_mem(self.sst.clone(), self.block_index)?;
+        self.block_index = self.sst.get_block_index_for_key(&key);
+        let block = self.sst.load_block_to_mem(self.block_index)?;
         self.block_iterator = BlockIterator::create_and_seek_to_key(Arc::new(block), key);
         self.current_kv = self.block_iterator.peek();
         Ok(())
-    }
-
-    fn get_block_index_for_key(sst: Arc<SST>, key: &TimestampedKey) -> usize {
-        let (mut lo, mut hi) = (0, sst.meta_blocks.len() - 1);
-        // seek to last block with first_key less than or equal to key
-        while lo < hi {
-            let mid = (lo + hi + 1) / 2; // use right mid to avoid infinite loop
-            let first_key = sst.meta_blocks[mid].get_first_key();
-            match first_key.cmp(&key.get_key()) {
-                Ordering::Less => lo = mid,
-                Ordering::Greater => hi = mid - 1,
-                Ordering::Equal => return mid,
-            }
-        }
-        (lo + hi + 1) / 2
-    }
-
-    fn get_current_meta_block(&self) -> &BlockMetadata {
-        &self.sst.meta_blocks[self.block_index]
-    }
-
-    fn load_block_to_mem(sst: Arc<SST>, block_index: usize) -> Result<Block> {
-        let offset = sst.meta_blocks[block_index].get_offset();
-        let next_block_index = block_index + 1;
-        let next_offset = if sst.meta_blocks.len() < next_block_index + 1 {
-            sst.meta_block_offset
-        } else {
-            sst.meta_blocks[next_block_index].get_offset()
-        };
-        let block_size = next_offset - offset;
-        sst.file.load_block_to_mem(offset, block_size)
     }
 }
 
@@ -108,7 +77,8 @@ impl Iterator for SSTIterator {
             return None;
         }
         let current_key = self.current_kv.clone()?.key;
-        if current_key.get_key() < self.get_current_meta_block().get_last_key() {
+        let current_meta_block = &self.sst.meta_blocks[self.block_index];
+        if current_key.get_key() < current_meta_block.get_last_key() {
             let res = self.block_iterator.next();
             self.current_kv = self.block_iterator.peek();
             res
@@ -120,7 +90,7 @@ impl Iterator for SSTIterator {
                 return res;
             }
             // load new block
-            let block = Self::load_block_to_mem(self.sst.clone(), self.block_index);
+            let block = self.sst.load_block_to_mem(self.block_index);
             if block.is_err() {
                 self.is_valid = false;
                 return res;
@@ -170,7 +140,7 @@ mod tests {
         // build
         let dir = tempdir().unwrap();
         let path = dir.path().join("test_sst_iterate.sst");
-        let sst = builder.build(0, path).unwrap();
+        let sst = builder.build(0, path, None).unwrap();
         sst
     }
 

@@ -103,7 +103,9 @@ mod tests {
     #[test]
     fn test_storage_state_get_put() {
         let options = StorageStateOptions {
-            sst_max_size_bytes: 128
+            sst_max_size_bytes: 128,
+            block_max_size_bytes: 0,
+            block_cache_size_bytes: 0,
         };
         let mut storage_state = StorageState::new(options);
         storage_state
@@ -125,7 +127,9 @@ mod tests {
     #[test]
     fn test_storage_state_freeze() {
         let options = StorageStateOptions {
-            sst_max_size_bytes: 9
+            sst_max_size_bytes: 9,
+            block_max_size_bytes: 0,
+            block_cache_size_bytes: 0,
         };
         let mut storage_state = StorageState::new(options);
         storage_state
@@ -176,7 +180,9 @@ mod tests {
     #[test]
     fn test_scan() {
         let options = StorageStateOptions {
-            sst_max_size_bytes: 4
+            sst_max_size_bytes: 4,
+            block_max_size_bytes: 0,
+            block_cache_size_bytes: 0,
         };
         let mut storage_state = StorageState::new(options);
         storage_state
