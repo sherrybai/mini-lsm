@@ -7,7 +7,7 @@ use ouroboros::self_referencing;
 
 use crate::{iterator::StorageIterator, kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey}};
 
-use super::memtable::MemTable;
+use super::MemTable;
 
 pub struct MemTableIterator {
     internal: MemTableIteratorInternal,
@@ -36,6 +36,10 @@ impl MemTableIterator {
 impl StorageIterator for MemTableIterator {
     fn peek(&mut self) -> Option<KeyValuePair> {
         self.current_kv.clone()
+    }
+
+    fn is_valid(&self) -> bool {
+        true
     }
 }
 

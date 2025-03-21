@@ -14,7 +14,7 @@ impl<K, V> SkipList<K, V> {
     pub fn new(max_level: usize) -> Self {
         Self {
             head: NonNull::new(&mut Head::new(max_level)).expect("head pointer is null"),
-            max_level: max_level
+            max_level
         }
     }
 }
@@ -29,11 +29,11 @@ impl<K, V> Head<K, V> {
         Head { forward }
     }
 
-    pub fn get(self, key: K) -> Option<V> {
+    pub fn get(self, _key: K) -> Option<V> {
         todo!()
     }
 
-    pub fn insert(self, key: K, value: V) -> Result<()> {
+    pub fn insert(self, _key: K, _value: V) -> Result<()> {
         todo!()
     }
 }

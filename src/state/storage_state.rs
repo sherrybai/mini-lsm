@@ -1,9 +1,9 @@
-use std::{collections::VecDeque, iter, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
+use std::{collections::VecDeque, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
 
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 
-use crate::{iterator::{merge_iterator::MergeIterator, StorageIterator}, kv::kv_pair::KeyValuePair, memory::{memtable::MemTable, memtable_iterator::MemTableIterator}};
+use crate::{iterator::{merge_iterator::MergeIterator, StorageIterator}, kv::kv_pair::KeyValuePair, memory::memtable::{MemTable, iterator::MemTableIterator}};
 
 use super::storage_state_options::StorageStateOptions;
 
@@ -53,7 +53,8 @@ impl StorageState {
     }
 
     pub fn put(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
-        if self.current_memtable.get_size_bytes() + key.len() + value.len() > self.options.sst_max_size_bytes {
+        let current_memtable_size = self.current_memtable.get_size_bytes();
+        if current_memtable_size > 0 && current_memtable_size + key.len() + value.len() > self.options.sst_max_size_bytes {
             self.freeze_memtable()?;
         }
         let _rlock = self.state_lock.read().unwrap();
@@ -87,7 +88,7 @@ impl StorageState {
     pub fn scan(&mut self) -> impl StorageIterator<Item = KeyValuePair> {
         let mut iterators_to_merge = vec![MemTableIterator::new(&self.current_memtable)];
         for memtable in &self.frozen_memtables {
-            iterators_to_merge.push(MemTableIterator::new(&memtable));
+            iterators_to_merge.push(MemTableIterator::new(memtable));
         }
         MergeIterator::new(iterators_to_merge)
     }
@@ -97,12 +98,14 @@ impl StorageState {
 mod tests {
     use bytes::Bytes;
 
-    use crate::{kv::kv_pair::KeyValuePair, state::{storage_state::StorageState, storage_state_options::StorageStateOptions}};
+    use crate::state::{storage_state::StorageState, storage_state_options::StorageStateOptions};
 
     #[test]
     fn test_storage_state_get_put() {
         let options = StorageStateOptions {
-            sst_max_size_bytes: 128
+            sst_max_size_bytes: 128,
+            block_max_size_bytes: 0,
+            block_cache_size_bytes: 0,
         };
         let mut storage_state = StorageState::new(options);
         storage_state
@@ -124,12 +127,15 @@ mod tests {
     #[test]
     fn test_storage_state_freeze() {
         let options = StorageStateOptions {
-            sst_max_size_bytes: 15
+            sst_max_size_bytes: 9,
+            block_max_size_bytes: 0,
+            block_cache_size_bytes: 0,
         };
         let mut storage_state = StorageState::new(options);
         storage_state
             .put("hello".as_bytes(), "world".as_bytes())
             .unwrap();
+        // allow inserting at least one kv pair even if their size exceeds limit
         assert_eq!(
             storage_state.current_memtable.get_size_bytes(),
             10
@@ -174,7 +180,9 @@ mod tests {
     #[test]
     fn test_scan() {
         let options = StorageStateOptions {
-            sst_max_size_bytes: 4
+            sst_max_size_bytes: 4,
+            block_max_size_bytes: 0,
+            block_cache_size_bytes: 0,
         };
         let mut storage_state = StorageState::new(options);
         storage_state
