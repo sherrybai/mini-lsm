@@ -1,4 +1,4 @@
-use std::{sync::Arc, thread::current};
+use std::sync::Arc;
 
 use anyhow::Result;
 
@@ -55,7 +55,7 @@ impl SSTIterator {
         let (mut lo, mut hi) = (0, sst.meta_blocks.len() - 1);
         // seek to last block with first_key less than or equal to key
         while lo < hi {
-            let mid = (lo + hi) / 2;
+            let mid = (lo + hi + 1) / 2;  // use right mid to avoid infinite loop
             let first_key = sst.meta_blocks[mid].get_first_key();
             if *first_key < key.get_key() {
                 lo = mid;
@@ -103,27 +103,28 @@ impl Iterator for SSTIterator {
             return None;
         }
         if self.block_index >= self.sst.meta_blocks.len() {
-            self.is_valid = false;
             return None;
         }
         if self.current_kv.is_none() { return None };
         let current_key = self.current_kv.clone().expect("returned early if none").key;
         if current_key.get_key() < self.get_current_meta_block().get_last_key() {
-            self.block_iterator.next()
+            let res = self.block_iterator.next();
+            self.current_kv = self.block_iterator.peek();
+            return res;
         } else {
+            let res = self.current_kv.clone();
             self.block_index += 1;
             if self.block_index >= self.sst.meta_blocks.len() {
-                self.is_valid = false;
-                return None;
+                self.current_kv = None;
+                return res;
             }
             // load new block
             let block = Self::load_block_to_mem(self.sst.clone(), self.block_index);
             if block.is_err() {
                 self.is_valid = false;
-                return None;
+                return res;
             }
             self.block_iterator = BlockIterator::create_and_seek_to_first(Arc::new(block.expect("just checked for error")));
-            let res = self.current_kv.clone();
             self.current_kv = self.block_iterator.next();
             res
         }
@@ -182,6 +183,30 @@ mod tests {
         );
         for (i, kv) in iterator.enumerate() {
             assert_eq!(kv.key.get_key(), format!("k{}", i+1));
+        }
+    }
+
+    #[test]
+    fn test_seek_to_key() {
+        let sst = Arc::new(build_sst());
+        // create iterator
+        let mut iterator = SSTIterator::create_and_seek_to_first(sst.clone()).unwrap();
+        let mut i = 0;
+        while iterator.peek().is_some() {
+            let expected_key = format!("k{}", i+1);
+            assert_eq!(iterator.next().unwrap().key.get_key(), expected_key);
+            i += 1;
+        }
+        let key = TimestampedKey::new("k2".as_bytes().into());
+        assert!(iterator.seek_to_key(key.clone()).is_ok());
+        assert_eq!(iterator.peek().unwrap().key, key);
+
+        // create and seek to key
+        iterator = SSTIterator::create_and_seek_to_key(sst.clone(), key.clone()).unwrap();
+        assert_eq!(iterator.peek().unwrap().key, key);
+        for (i, kv) in iterator.enumerate() {
+            // iteration should start from k2
+            assert_eq!(kv.key.get_key(), format!("k{}", i+2));
         }
     }
 }
