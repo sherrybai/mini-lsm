@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
+use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use block_cache::BlockCache;
 
 use crate::block::metadata::BlockMetadata;
@@ -22,7 +23,7 @@ pub struct SST {
     file: File,
     meta_blocks: Vec<BlockMetadata>,
     meta_block_offset: u32,
-    block_cache: Option<BlockCache>,
+    block_cache: Option<Arc<BlockCache>>,
 }
 
 impl SST {
@@ -31,7 +32,7 @@ impl SST {
         file: File,
         meta_blocks: Vec<BlockMetadata>,
         meta_block_offset: u32,
-        block_cache: Option<BlockCache>,
+        block_cache: Option<Arc<BlockCache>>,
     ) -> Self {
         Self {
             id,
@@ -42,7 +43,7 @@ impl SST {
         }
     }
 
-    fn load_block_to_mem(&self, block_index: usize) -> Result<Block> {
+    fn read_block(&self, block_index: usize) -> Result<Arc<Block>> {
         let offset = self.meta_blocks[block_index].get_offset();
         let next_block_index = block_index + 1;
         let next_offset = if self.meta_blocks.len() < next_block_index + 1 {
@@ -51,7 +52,22 @@ impl SST {
             self.meta_blocks[next_block_index].get_offset()
         };
         let block_size = next_offset - offset;
-        self.file.load_block_to_mem(offset, block_size)
+        let res = self.file.load_block_to_mem(offset, block_size)?;
+        Ok(Arc::new(res))
+    }
+
+    fn read_block_cached(&self, block_index: usize) -> Result<Arc<Block>> {
+        // attempt to read from cache first
+        if let Some(cache) = &self.block_cache {
+            let cache_res =
+                cache.try_get_with((self.id, block_index), || self.read_block(block_index));
+            match cache_res {
+                Ok(res) => Ok(res),
+                Err(err) => Err(anyhow!(err)),
+            }
+        } else {
+            self.read_block(block_index)
+        }
     }
 
     fn get_block_index_for_key(&self, key: &TimestampedKey) -> usize {
@@ -72,19 +88,33 @@ impl SST {
 
 #[cfg(test)]
 mod tests {
-    use crate::kv::timestamped_key::TimestampedKey;
+    use std::sync::Arc;
+
+    use crate::{block::Block, kv::timestamped_key::TimestampedKey, table::test_utils::build_sst_with_cache};
 
     use super::test_utils::build_sst;
 
     #[test]
-    fn test_load_block_to_mem() {
+    fn test_read_block() {
         let mut sst = build_sst();
         let mut expected_block_data = vec![];
-        expected_block_data.extend(sst.load_block_to_mem(0).unwrap().encode());
-        expected_block_data.extend(sst.load_block_to_mem(1).unwrap().encode());
+        expected_block_data.extend(sst.read_block(0).unwrap().encode());
+        expected_block_data.extend(sst.read_block(1).unwrap().encode());
         let actual_block_data =
             &sst.file.get_contents_as_bytes().unwrap()[..expected_block_data.len()];
         assert_eq!(actual_block_data, expected_block_data);
+    }
+
+    #[test]
+    fn test_read_block_cached() {
+        let (sst, cache) = build_sst_with_cache();
+        let cached_block = Arc::new(Block::new(vec![], vec![], 0));
+        cache.insert((0, 0), cached_block.clone());
+
+        let read_uncached = sst.read_block(0).unwrap();
+        let read_cached = sst.read_block_cached(0).unwrap();
+        assert_ne!(read_uncached, read_cached);
+        assert_eq!(read_cached, cached_block);
     }
 
     #[test]

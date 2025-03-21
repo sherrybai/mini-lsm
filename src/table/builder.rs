@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -66,7 +67,7 @@ impl SSTBuilder {
         self.block_data.extend(block.encode());
     }
 
-    pub fn build(mut self, id: usize, path: impl AsRef<Path>, block_cache: Option<BlockCache>) -> Result<SST> {
+    pub fn build(mut self, id: usize, path: impl AsRef<Path>, block_cache: Option<Arc<BlockCache>>) -> Result<SST> {
         // finalize last block
         self.finalize_block();
         self.offset =

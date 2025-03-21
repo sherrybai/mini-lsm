@@ -21,8 +21,8 @@ pub struct SSTIterator {
 impl SSTIterator {
     pub fn create_and_seek_to_first(sst: Arc<SST>) -> Result<Self> {
         // load the first block
-        let block = sst.load_block_to_mem( 0)?;
-        let mut block_iterator = BlockIterator::create_and_seek_to_first(Arc::new(block));
+        let block = sst.read_block_cached( 0)?;
+        let mut block_iterator = BlockIterator::create_and_seek_to_first(block);
         let current_kv = block_iterator.peek();
         Ok(Self {
             sst,
@@ -35,8 +35,8 @@ impl SSTIterator {
 
     pub fn create_and_seek_to_key(sst: Arc<SST>, key: TimestampedKey) -> Result<Self> {
         let block_index = sst.get_block_index_for_key(&key);
-        let block = sst.load_block_to_mem(block_index)?;
-        let mut block_iterator = BlockIterator::create_and_seek_to_key(Arc::new(block), key);
+        let block = sst.read_block_cached(block_index)?;
+        let mut block_iterator = BlockIterator::create_and_seek_to_key(block, key);
         let current_kv = block_iterator.peek();
         Ok(Self {
             sst,
@@ -49,8 +49,8 @@ impl SSTIterator {
 
     pub fn seek_to_key(&mut self, key: TimestampedKey) -> Result<()> {
         self.block_index = self.sst.get_block_index_for_key(&key);
-        let block = self.sst.load_block_to_mem(self.block_index)?;
-        self.block_iterator = BlockIterator::create_and_seek_to_key(Arc::new(block), key);
+        let block = self.sst.read_block_cached(self.block_index)?;
+        self.block_iterator = BlockIterator::create_and_seek_to_key(block, key);
         self.current_kv = self.block_iterator.peek();
         Ok(())
     }
@@ -90,14 +90,12 @@ impl Iterator for SSTIterator {
                 return res;
             }
             // load new block
-            let block = self.sst.load_block_to_mem(self.block_index);
+            let block = self.sst.read_block_cached(self.block_index);
             if block.is_err() {
                 self.is_valid = false;
                 return res;
             }
-            self.block_iterator = BlockIterator::create_and_seek_to_first(Arc::new(
-                block.expect("just checked for error"),
-            ));
+            self.block_iterator = BlockIterator::create_and_seek_to_first(block.unwrap());
             self.current_kv = self.block_iterator.next();
             res
         }

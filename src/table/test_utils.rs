@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::kv::kv_pair::KeyValuePair;
 use crate::kv::timestamped_key::TimestampedKey;
 use crate::table::builder::SSTBuilder;
@@ -5,7 +7,9 @@ use crate::table::SST;
 
 use tempfile::tempdir;
 
-pub fn build_sst() -> SST {
+use super::block_cache::BlockCache;
+
+pub fn set_up_builder() -> SSTBuilder {
     // build a test SST with two blocks
     // - block 0 contains k1 and k2
     // - block 1 contains k3
@@ -29,9 +33,24 @@ pub fn build_sst() -> SST {
             value: "v3".as_bytes().into(),
         })
         .is_ok());
+    builder
+}
+
+pub fn build_sst() -> SST {
+    let builder: SSTBuilder = set_up_builder();
     // build
     let dir = tempdir().unwrap();
-    let path = dir.path().join("test_sst_iterate.sst");
+    let path = dir.path().join("test_sst.sst");
     let sst = builder.build(0, path, None).unwrap();
     sst
+}
+
+pub fn build_sst_with_cache() -> (SST, Arc<BlockCache>) {
+    let builder: SSTBuilder = set_up_builder();
+    let cache = Arc::new(BlockCache::new(50));
+    // build
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("test_sst.sst");
+    let sst = builder.build(0, path, Some(cache.clone())).unwrap();
+    (sst, cache)
 }
