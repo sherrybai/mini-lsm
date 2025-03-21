@@ -99,6 +99,10 @@ impl BlockMetadata {
     pub fn get_last_key(&self) -> &Bytes {
         &self.last_key
     }
+
+    pub fn get_offset(&self) -> u32 {
+        self.offset
+    }
 }
 
 #[cfg(test)]

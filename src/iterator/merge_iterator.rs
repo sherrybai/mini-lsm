@@ -8,6 +8,7 @@ pub struct MergeIterator<T: StorageIterator> {
     // first value: key value pair; second value: index of source iterator
     heap: BinaryHeap<Reverse<(KeyValuePair, usize)>>,
     iterators_to_merge: Vec<T>,
+    is_valid: bool,
 }
 
 impl<T: StorageIterator> MergeIterator<T>
@@ -25,16 +26,21 @@ where
         Self {
             heap,
             iterators_to_merge,
+            is_valid: true,
         }
     }
 }
 
-impl<T: StorageIterator> StorageIterator for MergeIterator<T> 
+impl<T: StorageIterator> StorageIterator for MergeIterator<T>
 where
     T: Iterator<Item = KeyValuePair>,
 {
     fn peek(&mut self) -> Option<KeyValuePair> {
         self.heap.peek().map(|Reverse((res_kv, _))| res_kv.clone())
+    }
+
+    fn is_valid(&self) -> bool {
+        self.is_valid
     }
 }
 
@@ -44,10 +50,16 @@ where
 {
     type Item = KeyValuePair;
     fn next(&mut self) -> Option<KeyValuePair> {
+        if !self.is_valid {
+            return None;
+        }
         let res = self.heap.pop();
         match res {
             None => None,
             Some(Reverse((res_kv, index))) => {
+                if !self.iterators_to_merge[index].is_valid() {
+                    self.is_valid = false;
+                }
                 let new_heap_kv = self.iterators_to_merge[index].next();
                 if let Some(new_kv) = new_heap_kv {
                     self.heap.push(Reverse((new_kv, index)));
@@ -55,15 +67,18 @@ where
                 Some(res_kv)
             }
         }
-    }    
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        iterator::StorageIterator,
+        iterator::{
+            test_iterator::TestIterator,
+            StorageIterator,
+        },
         kv::timestamped_key::TimestampedKey,
-        memory::memtable::{MemTable, iterator::MemTableIterator},
+        memory::memtable::{iterator::MemTableIterator, MemTable},
     };
 
     use super::MergeIterator;
@@ -90,5 +105,17 @@ mod tests {
             assert!(merge_iterator.peek().is_some_and(|kv| kv.key == key));
             assert!(merge_iterator.next().is_some_and(|kv| kv.key == key));
         }
+    }
+
+    #[test]
+    fn test_not_valid() {
+        let test_iter_1 = TestIterator::new(1, 2);
+        let test_iter_2 = TestIterator::new(2, 1);
+
+        let mut merge_iterator = MergeIterator::new(vec![test_iter_1, test_iter_2]);
+        assert_eq!(merge_iterator.next().unwrap().key.get_key(), "k1".as_bytes());
+        assert!(merge_iterator.is_valid());
+        assert_eq!(merge_iterator.next().unwrap().key.get_key(), "k1".as_bytes());
+        assert!(!merge_iterator.is_valid());
     }
 }

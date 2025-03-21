@@ -37,6 +37,10 @@ impl StorageIterator for MemTableIterator {
     fn peek(&mut self) -> Option<KeyValuePair> {
         self.current_kv.clone()
     }
+
+    fn is_valid(&self) -> bool {
+        true
+    }
 }
 
 impl Iterator for MemTableIterator {
