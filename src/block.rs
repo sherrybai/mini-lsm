@@ -26,8 +26,7 @@ impl Block {
         encoded.extend(
             self.offsets
                 .iter()
-                .map(|offset| offset.to_be_bytes())
-                .flatten(),
+                .flat_map(|offset| offset.to_be_bytes())
         );
         encoded.extend(self.end_of_data_offset.to_be_bytes());
         encoded

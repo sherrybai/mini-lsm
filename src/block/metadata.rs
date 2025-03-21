@@ -85,7 +85,7 @@ impl BlockMetadata {
         let mut res: Vec<Self> = Vec::new();
         let encoded_size = encoded_block_meta.len();
         while current_index < encoded_size {
-            let (decoded_block_meta, next_index) = Self::decode(&encoded_block_meta, current_index);
+            let (decoded_block_meta, next_index) = Self::decode(encoded_block_meta, current_index);
             res.push(decoded_block_meta);
             current_index = next_index;
         }

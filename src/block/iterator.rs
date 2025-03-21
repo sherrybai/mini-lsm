@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
 use bytes::Bytes;
 
@@ -54,12 +54,10 @@ impl BlockIterator {
                 .expect("mid is less than length of block offsets")
                 .key
                 .get_key();
-            if raw_key < key.get_key() {
-                lo = mid + 1;
-            } else if raw_key > key.get_key() {
-                hi = mid;
-            } else {
-                return;
+            match raw_key.cmp(&key.get_key()) {
+                Ordering::Less => lo = mid + 1,
+                Ordering::Greater => hi = mid,
+                Ordering::Equal => return,
             }
         }
         let mid = (lo + hi) / 2;
@@ -69,7 +67,7 @@ impl BlockIterator {
 
     fn parse_current_kv(&self) -> Option<KeyValuePair> {
         if self.current_index == self.block.offsets.len() {
-            return None
+            return None;
         }
 
         let current_offset = self.block.offsets[self.current_index];
@@ -91,7 +89,7 @@ impl BlockIterator {
         );
         let value_slice = &self.block.data
             [value_contents_offset.into()..(value_contents_offset + value_size).into()];
-        
+
         Some(KeyValuePair {
             key: TimestampedKey::new(Bytes::copy_from_slice(key_slice)),
             value: Bytes::copy_from_slice(value_slice),
@@ -112,15 +110,12 @@ impl StorageIterator for BlockIterator {
 impl Iterator for BlockIterator {
     type Item = KeyValuePair;
     fn next(&mut self) -> Option<KeyValuePair> {
-        if self.current_kv.is_none() {
-            return None
-        }
-        let res = self.current_kv.clone();
+        let res = self.current_kv.clone()?;
         // update next item
         self.current_index += 1;
         self.current_kv = self.parse_current_kv();
-        
-        res
+
+        Some(res)
     }
 }
 
@@ -166,7 +161,7 @@ mod tests {
         );
 
         for (i, kv) in block_iterator.enumerate() {
-            assert_eq!(kv.key.get_key(), format!("k{}", i+1).as_bytes());
+            assert_eq!(kv.key.get_key(), format!("k{}", i + 1).as_bytes());
         }
     }
 

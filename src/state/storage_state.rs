@@ -88,7 +88,7 @@ impl StorageState {
     pub fn scan(&mut self) -> impl StorageIterator<Item = KeyValuePair> {
         let mut iterators_to_merge = vec![MemTableIterator::new(&self.current_memtable)];
         for memtable in &self.frozen_memtables {
-            iterators_to_merge.push(MemTableIterator::new(&memtable));
+            iterators_to_merge.push(MemTableIterator::new(memtable));
         }
         MergeIterator::new(iterators_to_merge)
     }

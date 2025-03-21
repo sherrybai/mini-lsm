@@ -30,7 +30,7 @@ impl File {
 
     pub fn load_block_to_mem(&self, offset: u32, block_size: u32) -> Result<Block> {
         let mut buffer = vec![0; block_size.try_into()?];
-        self.file.read_exact_at(&mut buffer, offset.try_into()?)?;
+        self.file.read_exact_at(&mut buffer, offset.into())?;
         let block = Block::decode(buffer);
         Ok(block)
     }
