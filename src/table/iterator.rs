@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, thread::current};
 
 use anyhow::Result;
 
@@ -10,6 +10,7 @@ pub struct SSTIterator {
     sst: Arc<SST>,
     block_index: usize,
     block_iterator: BlockIterator,
+    current_kv: Option<KeyValuePair>,
     is_valid: bool,
 }
 
@@ -17,11 +18,13 @@ impl SSTIterator {
     pub fn create_and_seek_to_first(sst: Arc<SST>) -> Result<Self> {
         // load the first block
         let block = Self::load_block_to_mem(sst.clone(), 0)?;
-        let block_iterator = BlockIterator::create_and_seek_to_first(Arc::new(block));
+        let mut block_iterator = BlockIterator::create_and_seek_to_first(Arc::new(block));
+        let current_kv = block_iterator.peek();
         Ok(Self {
             sst,
             block_index: 0,
             block_iterator,
+            current_kv,
             is_valid: true
         })
     }
@@ -29,11 +32,13 @@ impl SSTIterator {
     pub fn create_and_seek_to_key(sst: Arc<SST>, key: TimestampedKey) -> Result<Self> {
         let block_index = Self::get_block_index_for_key(sst.clone(), &key);
         let block = Self::load_block_to_mem(sst.clone(), block_index)?;
-        let block_iterator = BlockIterator::create_and_seek_to_key(Arc::new(block), key);
+        let mut block_iterator = BlockIterator::create_and_seek_to_key(Arc::new(block), key);
+        let current_kv = block_iterator.peek();
         Ok(Self {
             sst,
             block_index,
             block_iterator,
+            current_kv,
             is_valid: true,
         })
     }
@@ -42,6 +47,7 @@ impl SSTIterator {
         self.block_index = Self::get_block_index_for_key(self.sst.clone(), &key);
         let block = Self::load_block_to_mem(self.sst.clone(), self.block_index)?;
         self.block_iterator = BlockIterator::create_and_seek_to_key(Arc::new(block), key);
+        self.current_kv = self.block_iterator.peek();
         Ok(())
     }
 
@@ -67,20 +73,21 @@ impl SSTIterator {
     }
 
     fn load_block_to_mem(sst: Arc<SST>, block_index: usize) -> Result<Block> {
+        let offset = sst.meta_blocks[block_index].get_offset();
         let next_block_index = block_index + 1;
         let next_offset = if sst.meta_blocks.len() < next_block_index + 1 { 
             sst.meta_block_offset 
         } else { 
             sst.meta_blocks[next_block_index].get_offset()
         };
-        let block_size = next_offset - 4;  // remove 4 bytes for block offset
-        sst.file.load_block_to_mem(0, block_size)
+        let block_size = next_offset - offset;
+        sst.file.load_block_to_mem(offset, block_size)
     }
 }
 
 impl StorageIterator for SSTIterator {
     fn peek(&mut self) -> Option<KeyValuePair> {
-        self.block_iterator.peek()
+        self.current_kv.clone()
     }
 
     fn is_valid(&self) -> bool {
@@ -99,9 +106,8 @@ impl Iterator for SSTIterator {
             self.is_valid = false;
             return None;
         }
-        let current_kv = self.peek();
-        if current_kv.is_none() { return None };
-        let current_key = current_kv.expect("returned early if none").key;
+        if self.current_kv.is_none() { return None };
+        let current_key = self.current_kv.clone().expect("returned early if none").key;
         if current_key.get_key() < self.get_current_meta_block().get_last_key() {
             self.block_iterator.next()
         } else {
@@ -117,7 +123,9 @@ impl Iterator for SSTIterator {
                 return None;
             }
             self.block_iterator = BlockIterator::create_and_seek_to_first(Arc::new(block.expect("just checked for error")));
-            self.block_iterator.peek()  // first element in new block
+            let res = self.current_kv.clone();
+            self.current_kv = self.block_iterator.next();
+            res
         }
     }
 }
@@ -162,7 +170,7 @@ mod tests {
     fn test_create_and_seek_to_first() {
         let sst = build_sst();
         // create iterator
-        let mut iterator = SSTIterator::create_and_seek_to_first(Arc::new(sst)).unwrap();
+        let mut iterator: SSTIterator = SSTIterator::create_and_seek_to_first(Arc::new(sst)).unwrap();
         assert!(iterator.peek().is_some());
         assert_eq!(
             iterator
@@ -173,7 +181,7 @@ mod tests {
             "k1".as_bytes()
         );
         for (i, kv) in iterator.enumerate() {
-            assert_eq!(kv.key.get_key(), format!("k{}", i+1).as_bytes());
+            assert_eq!(kv.key.get_key(), format!("k{}", i+1));
         }
     }
 }

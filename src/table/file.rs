@@ -28,7 +28,7 @@ impl File {
         self.size
     }
 
-    pub fn load_block_to_mem(&self, offset: usize, block_size: u32) -> Result<Block> {
+    pub fn load_block_to_mem(&self, offset: u32, block_size: u32) -> Result<Block> {
         let mut buffer = vec![0; block_size.try_into()?];
         self.file.read_exact_at(&mut buffer, offset.try_into()?)?;
         let block = Block::decode(buffer);
