@@ -35,3 +35,43 @@ impl File {
         Ok(block)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use crate::{block::builder::BlockBuilder, kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey}, table::file::File};
+
+    #[test]
+    fn test_load_block_to_mem() {
+        let mut block_builder = BlockBuilder::new(32);
+        assert!(block_builder
+            .add(KeyValuePair {
+                key: TimestampedKey::new("k1".as_bytes().into()),
+                value: "v1".as_bytes().into()
+            })
+            .is_ok());
+        assert!(block_builder
+            .add(KeyValuePair {
+                key: TimestampedKey::new("k2".as_bytes().into()),
+                value: "v2".as_bytes().into()
+            })
+            .is_ok());
+        // 2 * 8 bytes per kv pair
+        // 2 * 2 bytes per offset
+        // 2 bytes for end of data offset
+        let expected_block_size = 2 * 8 + 2 * 2 + 2;
+        assert_eq!(block_builder.get_block_size(), expected_block_size);
+        let block = block_builder.build();
+        let data = block.encode();
+
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test_sst_build.sst");
+        let file = File::create(path, data);
+        assert!(file.is_ok());
+
+        let loaded_block = file.unwrap().load_block_to_mem(0, expected_block_size.try_into().unwrap());
+        assert!(loaded_block.is_ok());
+        assert_eq!(loaded_block.unwrap(), block);
+    }
+}

@@ -138,7 +138,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test_sst_build.sst");
         let mut sst = builder.build(0, path).unwrap();
-        let file_contents = sst.file.get_contents_as_bytes().unwrap();
+        let file_contents: Vec<u8> = sst.file.get_contents_as_bytes().unwrap();
 
         // check that data size, meta size, and offset value are correct
         let meta_offset = u32::from_be_bytes(file_contents[file_contents.len()-4..].try_into().expect("chunk of size 4"));
