@@ -16,8 +16,13 @@ where
     T: Iterator<Item = KeyValuePair>,
 {
     pub fn new(mut iterators_to_merge: Vec<T>) -> Self {
-        let mut heap = BinaryHeap::new();
+        let mut is_valid = true;
+        let mut heap: BinaryHeap<Reverse<(KeyValuePair, usize)>> = BinaryHeap::new();
         for (index, iterator) in iterators_to_merge.iter_mut().enumerate() {
+            if !iterator.is_valid() {
+                is_valid = false;
+                break;
+            }
             let new_heap_kv = iterator.next();
             if let Some(new_kv) = new_heap_kv {
                 heap.push(Reverse((new_kv, index)));
@@ -26,7 +31,7 @@ where
         Self {
             heap,
             iterators_to_merge,
-            is_valid: true,
+            is_valid,
         }
     }
 }
