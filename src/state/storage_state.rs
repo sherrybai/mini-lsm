@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
+use std::{collections::VecDeque, fs::create_dir_all, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
 
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
@@ -15,23 +15,26 @@ pub struct StorageState {
 
     state_lock: RwLock<()>,
     counter: AtomicUsize,
-    options: Arc<StorageStateOptions>
+    options: StorageStateOptions
 }
 
 impl StorageState {
-    pub fn new(options: Arc<StorageStateOptions>) -> Self {
+    pub fn open(options: StorageStateOptions) -> Result<Self> {
+        // initialize directory if it doesn't exist
+        create_dir_all(&options.path)?;
+
         let counter: AtomicUsize = AtomicUsize::new(0);
         let current_memtable = Arc::new(MemTable::new(counter.fetch_add(1, Ordering::SeqCst)));
         // newest to oldest frozen memtables
         let frozen_memtables: VecDeque<Arc<MemTable>> = VecDeque::new();
 
-        Self {
+        Ok(Self {
             current_memtable,
             frozen_memtables,
             state_lock: RwLock::new(()),
             counter,
             options,
-        }
+        })
     }
     pub fn get(&mut self, key: &[u8]) -> Option<Bytes> {
         let _rlock = self.state_lock.read().unwrap();
@@ -98,8 +101,6 @@ impl StorageState {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use bytes::Bytes;
     use tempfile::tempdir;
 
@@ -108,13 +109,13 @@ mod tests {
     #[test]
     fn test_storage_state_get_put() {
         let dir = tempdir().unwrap();
-        let options = Arc::new(StorageStateOptions {
+        let options = StorageStateOptions {
             sst_max_size_bytes: 128,
             block_max_size_bytes: 0,
             block_cache_size_bytes: 0,
             path: dir.path().to_owned(),
-        });
-        let mut storage_state = StorageState::new(options);
+        };
+        let mut storage_state = StorageState::open(options).unwrap();
         storage_state
             .put("hello".as_bytes(), "world".as_bytes())
             .unwrap();
@@ -134,13 +135,13 @@ mod tests {
     #[test]
     fn test_storage_state_freeze() {
         let dir = tempdir().unwrap();
-        let options = Arc::new(StorageStateOptions {
+        let options = StorageStateOptions {
             sst_max_size_bytes: 9,
             block_max_size_bytes: 0,
             block_cache_size_bytes: 0,
             path: dir.path().to_owned(),
-        });
-        let mut storage_state = StorageState::new(options);
+        };
+        let mut storage_state = StorageState::open(options).unwrap();
         storage_state
             .put("hello".as_bytes(), "world".as_bytes())
             .unwrap();
@@ -189,13 +190,13 @@ mod tests {
     #[test]
     fn test_scan() {
         let dir = tempdir().unwrap();
-        let options = Arc::new(StorageStateOptions {
+        let options = StorageStateOptions {
             sst_max_size_bytes: 4,
             block_max_size_bytes: 0,
             block_cache_size_bytes: 0,
             path: dir.path().to_owned(),
-        });
-        let mut storage_state = StorageState::new(options);
+        };
+        let mut storage_state = StorageState::open(options).unwrap();
         storage_state
             .put("k1".as_bytes(), "v1".as_bytes())
             .unwrap();

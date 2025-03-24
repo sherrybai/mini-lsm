@@ -18,7 +18,7 @@ pub mod file;
 pub mod iterator;
 
 // in-memory representation of a single SST file on disk
-pub struct SST {
+pub struct Sst {
     id: usize,
     file: File,
     meta_blocks: Vec<BlockMetadata>,
@@ -26,7 +26,7 @@ pub struct SST {
     block_cache: Option<Arc<BlockCache>>,
 }
 
-impl SST {
+impl Sst {
     pub fn new(
         id: usize,
         file: File,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::kv::kv_pair::KeyValuePair;
 use crate::kv::timestamped_key::TimestampedKey;
 use crate::table::builder::SSTBuilder;
-use crate::table::SST;
+use crate::table::Sst;
 
 use tempfile::tempdir;
 
@@ -36,7 +36,7 @@ pub fn set_up_builder() -> SSTBuilder {
     builder
 }
 
-pub fn build_sst() -> SST {
+pub fn build_sst() -> Sst {
     let builder: SSTBuilder = set_up_builder();
     // build
     let dir = tempdir().unwrap();
@@ -45,7 +45,7 @@ pub fn build_sst() -> SST {
     sst
 }
 
-pub fn build_sst_with_cache() -> (SST, Arc<BlockCache>) {
+pub fn build_sst_with_cache() -> (Sst, Arc<BlockCache>) {
     let builder: SSTBuilder = set_up_builder();
     let cache = Arc::new(BlockCache::new(50));
     // build

@@ -10,7 +10,7 @@ use crate::{
     table::File,
 };
 
-use super::{block_cache::BlockCache, SST};
+use super::{block_cache::BlockCache, Sst};
 
 pub struct SSTBuilder {
     block_builder: BlockBuilder,
@@ -67,7 +67,7 @@ impl SSTBuilder {
         self.block_data.extend(block.encode());
     }
 
-    pub fn build(mut self, id: usize, path: impl AsRef<Path>, block_cache: Option<Arc<BlockCache>>) -> Result<SST> {
+    pub fn build(mut self, id: usize, path: impl AsRef<Path>, block_cache: Option<Arc<BlockCache>>) -> Result<Sst> {
         // finalize last block
         self.finalize_block();
         self.offset =
@@ -84,7 +84,7 @@ impl SSTBuilder {
         // dump to file
         let file = File::create(path, buffer)?;
         Ok(
-            SST::new(
+            Sst::new(
                 id, 
                 file, 
                 self.block_meta_list,

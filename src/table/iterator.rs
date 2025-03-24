@@ -8,10 +8,10 @@ use crate::{
     kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey},
 };
 
-use super::SST;
+use super::Sst;
 
 pub struct SSTIterator {
-    sst: Arc<SST>,
+    sst: Arc<Sst>,
     block_index: usize,
     block_iterator: BlockIterator,
     current_kv: Option<KeyValuePair>,
@@ -19,7 +19,7 @@ pub struct SSTIterator {
 }
 
 impl SSTIterator {
-    pub fn create_and_seek_to_first(sst: Arc<SST>) -> Result<Self> {
+    pub fn create_and_seek_to_first(sst: Arc<Sst>) -> Result<Self> {
         // load the first block
         let block = sst.read_block_cached( 0)?;
         let mut block_iterator = BlockIterator::create_and_seek_to_first(block);
@@ -33,7 +33,7 @@ impl SSTIterator {
         })
     }
 
-    pub fn create_and_seek_to_key(sst: Arc<SST>, key: TimestampedKey) -> Result<Self> {
+    pub fn create_and_seek_to_key(sst: Arc<Sst>, key: TimestampedKey) -> Result<Self> {
         let block_index = sst.get_block_index_for_key(&key);
         let block = sst.read_block_cached(block_index)?;
         let mut block_iterator = BlockIterator::create_and_seek_to_key(block, key);
