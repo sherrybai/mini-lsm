@@ -3,19 +3,25 @@ use std::{io::Read, path::Path};
 
 use anyhow::Result;
 
+use crate::block::metadata::BlockMetadata;
 use crate::block::Block;
 pub struct File {
     file: std::fs::File,
-    size: usize,
+    size: u64,
 }
 
 impl File {
     pub fn create(path: impl AsRef<Path>, data: Vec<u8>) -> Result<Self> {
         std::fs::write(&path, &data)?;
-        Ok(Self {
-            file: std::fs::File::open(path)?, // read-only mode
-            size: data.len(),
-        })
+        let file = std::fs::File::open(path)?; // read-only mode
+        let size = file.metadata()?.len();
+        Ok(Self { file, size })
+    }
+
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let file = std::fs::File::open(path)?;
+        let size = file.metadata()?.len();
+        Ok(Self { file, size })
     }
 
     pub fn get_contents_as_bytes(&mut self) -> Result<Vec<u8>> {
@@ -24,7 +30,7 @@ impl File {
         Ok(bytes)
     }
 
-    pub fn get_size(&self) -> usize {
+    pub fn get_size(&self) -> u64 {
         self.size
     }
 
@@ -34,13 +40,35 @@ impl File {
         let block = Block::decode(buffer);
         Ok(block)
     }
+
+    pub fn get_meta_block_offset(&mut self) -> Result<u32> {
+        // last 4 bytes of file
+        let mut buffer = [0; 4];
+        self.file.read_exact_at(&mut buffer, self.get_size() - 4)?;
+        Ok(u32::from_be_bytes(buffer))
+    }
+
+    pub fn load_meta_blocks(&mut self, meta_block_offset: u32) -> Result<Vec<BlockMetadata>> {
+        // size of encoded file - size of data - 4 bytes for meta_block_offset
+        let meta_encoded_length =
+            usize::try_from(self.size)? - usize::try_from(meta_block_offset)? - 4;
+        let mut buffer: Vec<u8> = vec![0; meta_encoded_length];
+        self.file
+            .read_exact_at(&mut buffer, meta_block_offset.into())?;
+        let block_metadata = BlockMetadata::decode_to_list(&buffer);
+        Ok(block_metadata)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
 
-    use crate::{block::builder::BlockBuilder, kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey}, table::file::File};
+    use crate::{
+        block::{builder::BlockBuilder, metadata::BlockMetadata},
+        kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey},
+        table::{file::File, test_utils::build_sst},
+    };
 
     #[test]
     fn test_load_block_to_mem() {
@@ -70,8 +98,34 @@ mod tests {
         let file = File::create(path, data);
         assert!(file.is_ok());
 
-        let loaded_block = file.unwrap().load_block_to_mem(0, expected_block_size.try_into().unwrap());
+        let loaded_block = file
+            .unwrap()
+            .load_block_to_mem(0, expected_block_size.try_into().unwrap());
         assert!(loaded_block.is_ok());
         assert_eq!(loaded_block.unwrap(), block);
+    }
+
+    #[test]
+    fn test_load_meta_blocks() {
+        let sst = build_sst();
+        let mut file = sst.file;
+        let meta_block_offset = file.get_meta_block_offset().unwrap();
+        assert_eq!(meta_block_offset, 34);
+
+        let meta_blocks = file.load_meta_blocks(meta_block_offset).unwrap();
+        let expected_meta_1 = BlockMetadata::new(
+            0,
+            TimestampedKey::new("k1".as_bytes().into()),
+            TimestampedKey::new("k2".as_bytes().into()),
+        );
+        let expected_meta_2 = BlockMetadata::new(
+            22,
+            TimestampedKey::new("k3".as_bytes().into()),
+            TimestampedKey::new("k3".as_bytes().into()),
+        );
+
+        assert_eq!(meta_blocks.len(), 2);
+        assert_eq!(meta_blocks[0], expected_meta_1);
+        assert_eq!(meta_blocks[1], expected_meta_2);
     }
 }

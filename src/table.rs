@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
@@ -18,7 +19,7 @@ pub mod file;
 pub mod iterator;
 
 // in-memory representation of a single SST file on disk
-pub struct SST {
+pub struct Sst {
     id: usize,
     file: File,
     meta_blocks: Vec<BlockMetadata>,
@@ -26,7 +27,7 @@ pub struct SST {
     block_cache: Option<Arc<BlockCache>>,
 }
 
-impl SST {
+impl Sst {
     pub fn new(
         id: usize,
         file: File,
@@ -43,7 +44,21 @@ impl SST {
         }
     }
 
-    fn read_block(&self, block_index: usize) -> Result<Arc<Block>> {
+    // create from file
+    pub fn open(id: usize, path: PathBuf, block_cache: Option<Arc<BlockCache>>) -> Result<Self> {
+        let mut file = File::open(path)?;
+        let meta_block_offset = file.get_meta_block_offset()?;
+        let meta_blocks = file.load_meta_blocks(meta_block_offset)?;
+        Ok(Self::new(
+            id,
+            file,
+            meta_blocks,
+            meta_block_offset,
+            block_cache,
+        ))
+    }
+
+    pub fn read_block(&self, block_index: usize) -> Result<Arc<Block>> {
         let offset = self.meta_blocks[block_index].get_offset();
         let next_block_index = block_index + 1;
         let next_offset = if self.meta_blocks.len() < next_block_index + 1 {
@@ -76,13 +91,25 @@ impl SST {
         while lo < hi {
             let mid = (lo + hi + 1) / 2; // use right mid to avoid infinite loop
             let first_key = self.meta_blocks[mid].get_first_key();
-            match first_key.cmp(&key.get_key()) {
+            match first_key.cmp(key) {
                 Ordering::Less => lo = mid,
                 Ordering::Greater => hi = mid - 1,
                 Ordering::Equal => return mid,
             }
         }
         (lo + hi + 1) / 2
+    }
+
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
+
+    pub fn get_first_key(&self) -> TimestampedKey {
+        self.meta_blocks.first().expect("sst must contain at least one block").get_first_key()
+    }
+
+    pub fn get_last_key(&self) -> TimestampedKey {
+        self.meta_blocks.last().expect("sst must contain at least one block").get_last_key()
     }
 }
 

@@ -2,15 +2,14 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use bytes::Bytes;
 
 use crate::{
     block::{builder::BlockBuilder, metadata::BlockMetadata},
-    kv::kv_pair::KeyValuePair,
+    kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey},
     table::File,
 };
 
-use super::{block_cache::BlockCache, SST};
+use super::{block_cache::BlockCache, Sst};
 
 pub struct SSTBuilder {
     block_builder: BlockBuilder,
@@ -19,8 +18,8 @@ pub struct SSTBuilder {
     block_size: usize,
     block_data: Vec<u8>,
     offset: u32,
-    first_key: Bytes,
-    last_key: Bytes,
+    first_key: TimestampedKey,
+    last_key: TimestampedKey,
 }
 
 impl SSTBuilder {
@@ -32,25 +31,25 @@ impl SSTBuilder {
             block_data: Vec::new(),
             offset: 0,
             // junk values before we add keys
-            first_key: "".as_bytes().into(),
-            last_key: "".as_bytes().into(),
+            first_key: TimestampedKey::new("".as_bytes().into()),
+            last_key: TimestampedKey::new("".as_bytes().into()),
         }
     }
 
     pub fn add(&mut self, kv: KeyValuePair) -> Result<()> {
         // check if block is full
-        if self.block_builder.get_block_size_with_kv(&kv) >= self.block_size {
+        if !self.block_builder.is_empty() && self.block_builder.get_block_size_with_kv(&kv) >= self.block_size {
             self.finalize_block();
             // update metadata
             self.offset =
                 u32::try_from(self.block_data.len()).expect("size of SST must fit in 4 bytes");
-            self.first_key = kv.key.get_key();
+            self.first_key = kv.key.clone();
         }
         // handle first key in SST
-        if self.first_key.is_empty() {
-            self.first_key = kv.key.get_key();
+        if self.first_key.get_key().is_empty() {
+            self.first_key = kv.key.clone();
         }
-        self.last_key = kv.key.get_key();
+        self.last_key = kv.key.clone();
         self.block_builder.add(kv)?;
         Ok(())
     }
@@ -67,7 +66,7 @@ impl SSTBuilder {
         self.block_data.extend(block.encode());
     }
 
-    pub fn build(mut self, id: usize, path: impl AsRef<Path>, block_cache: Option<Arc<BlockCache>>) -> Result<SST> {
+    pub fn build(mut self, id: usize, path: impl AsRef<Path>, block_cache: Option<Arc<BlockCache>>) -> Result<Sst> {
         // finalize last block
         self.finalize_block();
         self.offset =
@@ -84,7 +83,7 @@ impl SSTBuilder {
         // dump to file
         let file = File::create(path, buffer)?;
         Ok(
-            SST::new(
+            Sst::new(
                 id, 
                 file, 
                 self.block_meta_list,
