@@ -1,9 +1,9 @@
-use std::{collections::VecDeque, fs::create_dir_all, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
+use std::{collections::VecDeque, fs::create_dir_all, path::PathBuf, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Ok, Result};
 use bytes::Bytes;
 
-use crate::{iterator::{merge_iterator::MergeIterator, StorageIterator}, kv::kv_pair::KeyValuePair, memory::memtable::{MemTable, iterator::MemTableIterator}};
+use crate::{iterator::{merge_iterator::MergeIterator, StorageIterator}, kv::kv_pair::KeyValuePair, memory::memtable::{iterator::MemTableIterator, MemTable}, table::{block_cache::BlockCache, builder::SSTBuilder}};
 
 use super::storage_state_options::StorageStateOptions;
 
@@ -12,7 +12,9 @@ const TOMBSTONE: &[u8] = &[];
 pub struct StorageState {
     current_memtable: Arc<MemTable>,
     frozen_memtables: VecDeque<Arc<MemTable>>,
-
+    l0_ssts: VecDeque<usize>,
+    sst_builder: SSTBuilder,
+    block_cache: Arc<BlockCache>,
     state_lock: RwLock<()>,
     counter: AtomicUsize,
     options: StorageStateOptions
@@ -27,10 +29,18 @@ impl StorageState {
         let current_memtable = Arc::new(MemTable::new(counter.fetch_add(1, Ordering::SeqCst)));
         // newest to oldest frozen memtables
         let frozen_memtables: VecDeque<Arc<MemTable>> = VecDeque::new();
+        // newest to oldest l0 SSTs
+        let l0_ssts: VecDeque<usize> = VecDeque::new();
+
+        let sst_builder = SSTBuilder::new(options.block_max_size_bytes);
+        let block_cache = Arc::new(BlockCache::new(options.block_cache_size_bytes));
 
         Ok(Self {
             current_memtable,
             frozen_memtables,
+            l0_ssts,
+            sst_builder,
+            block_cache,
             state_lock: RwLock::new(()),
             counter,
             options,
@@ -96,6 +106,37 @@ impl StorageState {
             memtable_iterators.push(MemTableIterator::new(memtable));
         }
         MergeIterator::new(memtable_iterators)
+    }
+
+    pub fn flush_to_l0(&mut self) -> Result<()> {
+        let memtable_to_flush: Arc<MemTable>;
+        {
+            // acquire read lock to get last memtable
+            let _rlock = self.state_lock.read().unwrap();
+            let earliest_frozen_memtable = self.frozen_memtables.back();
+            match earliest_frozen_memtable {
+                Some(memtable) => { memtable_to_flush = memtable.clone() }
+                _ => { return Ok(()) }
+            }
+        }
+        // add to SST builder outside of lock
+        memtable_to_flush.flush(&mut self.sst_builder)?;
+        {
+            // acquire write
+            let _wlock = self.state_lock.write().unwrap();
+            // build the SST
+            let sst_id = memtable_to_flush.get_id();
+            let sst_builder = std::mem::replace(&mut self.sst_builder, SSTBuilder::new(self.options.block_max_size_bytes));
+            let sst = sst_builder.build(sst_id, self.get_sst_path(sst_id), Some(self.block_cache.clone()))?;
+            // add to L0 and remove from memtables
+            self.l0_ssts.push_front(sst.get_id());
+            self.frozen_memtables.pop_back();
+        }
+        Ok(())
+    }
+
+    fn get_sst_path(&self, sst_id: usize) -> PathBuf {
+        self.options.path.join(format!("{:05}.sst", sst_id))
     }
 }
 

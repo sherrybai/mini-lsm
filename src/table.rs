@@ -84,6 +84,10 @@ impl Sst {
         }
         (lo + hi + 1) / 2
     }
+
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
 }
 
 #[cfg(test)]
