@@ -12,6 +12,7 @@ const TOMBSTONE: &[u8] = &[];
 pub struct StorageState {
     current_memtable: Arc<MemTable>,
     frozen_memtables: VecDeque<Arc<MemTable>>,
+
     state_lock: RwLock<()>,
     counter: AtomicUsize,
     options: StorageStateOptions
@@ -86,11 +87,12 @@ impl StorageState {
     }
 
     pub fn scan(&mut self) -> impl StorageIterator<Item = KeyValuePair> {
-        let mut iterators_to_merge = vec![MemTableIterator::new(&self.current_memtable)];
+        // build memtable iterator
+        let mut memtable_iterators = vec![MemTableIterator::new(&self.current_memtable)];
         for memtable in &self.frozen_memtables {
-            iterators_to_merge.push(MemTableIterator::new(memtable));
+            memtable_iterators.push(MemTableIterator::new(memtable));
         }
-        MergeIterator::new(iterators_to_merge)
+        MergeIterator::new(memtable_iterators)
     }
 }
 
