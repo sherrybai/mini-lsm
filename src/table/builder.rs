@@ -2,7 +2,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use bytes::Bytes;
 
 use crate::{
     block::{builder::BlockBuilder, metadata::BlockMetadata},

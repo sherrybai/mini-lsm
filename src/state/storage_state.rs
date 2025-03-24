@@ -15,11 +15,13 @@ use bytes::Bytes;
 
 use crate::{
     iterator::{
-        merge_iterator::MergeIterator, two_merge_iterator::TwoMergeIterator, StorageIterator,
+        bounded_iterator::BoundedIterator, merge_iterator::MergeIterator,
+        two_merge_iterator::TwoMergeIterator, StorageIterator,
     },
-    kv::kv_pair::KeyValuePair,
+    kv::{kv_pair::KeyValuePair, timestamped_key::TimestampedKey},
     memory::memtable::{iterator::MemTableIterator, MemTable},
-    table::{block_cache::BlockCache, builder::SSTBuilder, iterator::SSTIterator, Sst}, utils::range_overlap,
+    table::{block_cache::BlockCache, builder::SSTBuilder, iterator::SSTIterator, Sst},
+    utils::range_overlap,
 };
 
 use super::storage_state_options::StorageStateOptions;
@@ -124,8 +126,8 @@ impl StorageState {
 
     pub fn scan(
         &mut self,
-        // lower: Bound<&[u8]>,
-        // upper: Bound<&[u8]>,
+        lower: Bound<&[u8]>,
+        upper: Bound<&[u8]>,
     ) -> Result<impl StorageIterator<Item = KeyValuePair>> {
         let memtable_merge_iterator: MergeIterator<MemTableIterator>;
         let sst_snapshot: VecDeque<Arc<Sst>>;
@@ -137,7 +139,7 @@ impl StorageState {
             let memtables_snapshot =
                 iter::once(self.current_memtable.clone()).chain(self.frozen_memtables.clone());
             let memtable_iterators = memtables_snapshot
-                .map(|memtable| MemTableIterator::new(&memtable))
+                .map(|memtable| memtable.scan(lower, upper))
                 .collect();
             memtable_merge_iterator = MergeIterator::new(memtable_iterators);
 
@@ -149,9 +151,36 @@ impl StorageState {
         // ok to do this outside of read lock as sst files will never be modified
         let mut l0_sst_iterators = vec![];
         for sst in sst_snapshot {
-            // if range_overlap(lower, upper, sst., target_upper)
-            let sst_iterator = SSTIterator::create_and_seek_to_first(sst)?;
-            l0_sst_iterators.push(sst_iterator);
+            if !range_overlap(lower, upper, sst.get_first_key(), sst.get_last_key()) {
+                continue;
+            }
+            let mut sst_iterator: SSTIterator;
+            match lower {
+                Bound::Included(lower_key) => {
+                    sst_iterator = SSTIterator::create_and_seek_to_key(
+                        sst,
+                        TimestampedKey::new(Bytes::copy_from_slice(lower_key)),
+                    )?;
+                }
+                Bound::Excluded(lower_key) => {
+                    sst_iterator = SSTIterator::create_and_seek_to_key(
+                        sst,
+                        TimestampedKey::new(Bytes::copy_from_slice(lower_key)),
+                    )?;
+                    if sst_iterator.is_valid()
+                        && sst_iterator
+                            .peek()
+                            .is_some_and(|kv| kv.key.get_key() == lower_key)
+                    {
+                        sst_iterator.next();
+                    }
+                }
+                Bound::Unbounded => {
+                    sst_iterator = SSTIterator::create_and_seek_to_first(sst)?;
+                }
+            }
+
+            l0_sst_iterators.push(BoundedIterator::new(sst_iterator, upper));
         }
         let l0_sst_merge_iterator = MergeIterator::new(l0_sst_iterators);
         let two_merge_iterator =
@@ -201,6 +230,8 @@ impl StorageState {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Bound;
+
     use bytes::Bytes;
     use tempfile::tempdir;
 
@@ -280,7 +311,11 @@ mod tests {
         // new kv entry can't fit in current memtable, so the memtable should be frozen
         storage_state.put("k2".as_bytes(), "v2".as_bytes()).unwrap();
         assert_eq!(storage_state.frozen_memtables.len(), 1);
-        for (i, item) in storage_state.scan().unwrap().enumerate() {
+        for (i, item) in storage_state
+            .scan(Bound::Unbounded, Bound::Unbounded)
+            .unwrap()
+            .enumerate()
+        {
             assert!(item.key.get_key() == format!("k{}", i + 1));
         }
     }
@@ -307,9 +342,23 @@ mod tests {
         storage_state.put("k3".as_bytes(), "v3".as_bytes()).unwrap();
         assert_eq!(storage_state.frozen_memtables.len(), 1);
 
-        for (i, item) in storage_state.scan().unwrap().enumerate() {
+        for (i, item) in storage_state
+            .scan(Bound::Unbounded, Bound::Unbounded)
+            .unwrap()
+            .enumerate()
+        {
             assert!(item.key.get_key() == format!("k{}", i + 1));
         }
+
+        // test bounded scan
+        let mut bounded_iter = storage_state
+            .scan(
+                Bound::Included("k2".as_bytes()),
+                Bound::Excluded("k3".as_bytes()),
+            )
+            .unwrap();
+        assert_eq!(bounded_iter.next().unwrap().key.get_key(), "k2".as_bytes());
+        assert!(bounded_iter.next().is_none());
     }
 
     #[test]

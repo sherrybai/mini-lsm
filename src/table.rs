@@ -91,7 +91,7 @@ impl Sst {
         while lo < hi {
             let mid = (lo + hi + 1) / 2; // use right mid to avoid infinite loop
             let first_key = self.meta_blocks[mid].get_first_key();
-            match first_key.cmp(&key) {
+            match first_key.cmp(key) {
                 Ordering::Less => lo = mid,
                 Ordering::Greater => hi = mid - 1,
                 Ordering::Equal => return mid,
@@ -104,12 +104,12 @@ impl Sst {
         self.id
     }
 
-    pub fn get_smallest_key() {
-
+    pub fn get_first_key(&self) -> TimestampedKey {
+        self.meta_blocks.first().expect("sst must contain at least one block").get_first_key()
     }
 
-    pub fn get_largest_key() {
-
+    pub fn get_last_key(&self) -> TimestampedKey {
+        self.meta_blocks.last().expect("sst must contain at least one block").get_last_key()
     }
 }
 

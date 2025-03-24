@@ -1,9 +1,9 @@
 pub mod iterator;
 
-use std::sync::{
+use std::{ops::Bound, sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
-};
+}};
 
 use anyhow::{anyhow, Ok, Result};
 use bytes::Bytes;
@@ -57,6 +57,10 @@ impl MemTable {
         Ok(())
     }
 
+    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> MemTableIterator {
+        MemTableIterator::new(self, lower, upper)
+    }
+
     pub fn get_id(&self) -> usize {
         self.id
     }
@@ -76,7 +80,7 @@ impl MemTable {
     }
 
     pub fn flush(&self, sst_builder: &mut SSTBuilder) -> Result<()> {
-        let iterator = MemTableIterator::new(self);
+        let iterator = MemTableIterator::new(self, Bound::Unbounded, Bound::Unbounded);
         for kv in iterator {
             sst_builder.add(kv)?;
         }
@@ -86,7 +90,7 @@ impl MemTable {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{atomic::Ordering, Arc};
+    use std::{ops::Bound, sync::{atomic::Ordering, Arc}};
 
     use bytes::Bytes;
     use tempfile::tempdir;
@@ -112,6 +116,20 @@ mod tests {
         assert!(memtable.freeze().is_ok());
         assert_eq!(memtable.mutable.load(Ordering::SeqCst), false);
         assert!(memtable.freeze().is_err())
+    }
+
+    #[test]
+    fn test_scan() {
+        let memtable = MemTable::new(0);
+        memtable
+            .put("k1".as_bytes(), "v1".as_bytes())
+            .unwrap();
+        memtable
+            .put("k2".as_bytes(), "v2".as_bytes())
+            .unwrap();
+
+        let mut iter = memtable.scan(Bound::Excluded("k1".as_bytes()), Bound::Included("k2".as_bytes()));
+        assert_eq!(iter.next().unwrap().key.get_key(), "k2".as_bytes());
     }
 
     #[test]

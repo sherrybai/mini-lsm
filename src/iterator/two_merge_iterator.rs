@@ -90,6 +90,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Bound;
+
     use crate::{
         iterator::{test_iterator::TestIterator, StorageIterator},
         kv::timestamped_key::TimestampedKey,
@@ -107,8 +109,8 @@ mod tests {
         let memtable_2 = MemTable::new(0);
         let _ = memtable_2.put("k3".as_bytes(), "v3".as_bytes());
 
-        let memtable_iter_1 = MemTableIterator::new(&memtable_1);
-        let memtable_iter_2 = MemTableIterator::new(&memtable_2);
+        let memtable_iter_1 = MemTableIterator::new(&memtable_1, Bound::Unbounded, Bound::Unbounded);
+        let memtable_iter_2 = MemTableIterator::new(&memtable_2, Bound::Unbounded, Bound::Unbounded);
 
         let mut two_merge_iterator = TwoMergeIterator::new(memtable_iter_1, memtable_iter_2);
 
