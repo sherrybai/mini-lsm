@@ -14,7 +14,8 @@ where
     X: StorageIterator + Iterator<Item = KeyValuePair>,
     Y: StorageIterator + Iterator<Item = KeyValuePair>,
 {
-    pub fn new(mut sub_iters: (X, Y)) -> Self {
+    pub fn new(sub_iter_1: X, sub_iter_2: Y) -> Self {
+        let mut sub_iters = (sub_iter_1, sub_iter_2);
         let is_valid = sub_iters.0.is_valid() && sub_iters.1.is_valid();
         let (current_kv, current_iter_index) =
             Self::get_current_kv_and_iter_index(&mut sub_iters, is_valid);
@@ -109,7 +110,7 @@ mod tests {
         let memtable_iter_1 = MemTableIterator::new(&memtable_1);
         let memtable_iter_2 = MemTableIterator::new(&memtable_2);
 
-        let mut two_merge_iterator = TwoMergeIterator::new((memtable_iter_1, memtable_iter_2));
+        let mut two_merge_iterator = TwoMergeIterator::new(memtable_iter_1, memtable_iter_2);
 
         for i in 0..4 {
             let key = TimestampedKey::new(format!("k{}", i + 1).into());
@@ -123,7 +124,7 @@ mod tests {
         let test_iter_1 = TestIterator::new(1, 2);
         let test_iter_2 = TestIterator::new(2, 1);
 
-        let mut merge_iterator = TwoMergeIterator::new((test_iter_1, test_iter_2));
+        let mut merge_iterator = TwoMergeIterator::new(test_iter_1, test_iter_2);
         assert_eq!(merge_iterator.next().unwrap().key.get_key(), "k1".as_bytes());
         assert!(merge_iterator.is_valid());
         assert_eq!(merge_iterator.next().unwrap().key.get_key(), "k1".as_bytes());

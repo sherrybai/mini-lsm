@@ -22,7 +22,7 @@ impl BlockBuilder {
     }
 
     pub fn add(&mut self, kv_pair: KeyValuePair) -> Result<()> {
-        if self.data.len() > 0 && self.get_block_size_with_kv(&kv_pair) > self.block_size {
+        if !self.is_empty() && self.get_block_size_with_kv(&kv_pair) > self.block_size {
             return Err(anyhow!("max block size reached"));
         }
 
@@ -46,6 +46,10 @@ impl BlockBuilder {
 
     pub fn build(self) -> Block {
         Block::new(self.data, self.offsets, self.current_offset)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.len() == 0
     }
 
     pub fn get_block_size(&self) -> usize {

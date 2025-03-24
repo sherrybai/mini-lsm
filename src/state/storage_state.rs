@@ -1,6 +1,8 @@
 use std::{
     collections::VecDeque,
     fs::create_dir_all,
+    iter,
+    ops::Bound,
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -12,10 +14,12 @@ use anyhow::{anyhow, Ok, Result};
 use bytes::Bytes;
 
 use crate::{
-    iterator::{merge_iterator::MergeIterator, StorageIterator},
+    iterator::{
+        merge_iterator::MergeIterator, two_merge_iterator::TwoMergeIterator, StorageIterator,
+    },
     kv::kv_pair::KeyValuePair,
     memory::memtable::{iterator::MemTableIterator, MemTable},
-    table::{block_cache::BlockCache, builder::SSTBuilder},
+    table::{block_cache::BlockCache, builder::SSTBuilder, iterator::SSTIterator, Sst}, utils::range_overlap,
 };
 
 use super::storage_state_options::StorageStateOptions;
@@ -25,7 +29,8 @@ const TOMBSTONE: &[u8] = &[];
 pub struct StorageState {
     current_memtable: Arc<MemTable>,
     frozen_memtables: VecDeque<Arc<MemTable>>,
-    l0_ssts: VecDeque<usize>,
+    l0_sst_ids: VecDeque<usize>,
+    ssts: VecDeque<Arc<Sst>>,
     sst_builder: SSTBuilder,
     block_cache: Arc<BlockCache>,
     state_lock: RwLock<()>,
@@ -43,7 +48,8 @@ impl StorageState {
         // newest to oldest frozen memtables
         let frozen_memtables: VecDeque<Arc<MemTable>> = VecDeque::new();
         // newest to oldest l0 SSTs
-        let l0_ssts: VecDeque<usize> = VecDeque::new();
+        let l0_sst_ids: VecDeque<usize> = VecDeque::new();
+        let ssts: VecDeque<Arc<Sst>> = VecDeque::new();
 
         let sst_builder = SSTBuilder::new(options.block_max_size_bytes);
         let block_cache = Arc::new(BlockCache::new(options.block_cache_size_bytes));
@@ -51,7 +57,8 @@ impl StorageState {
         Ok(Self {
             current_memtable,
             frozen_memtables,
-            l0_ssts,
+            l0_sst_ids,
+            ssts,
             sst_builder,
             block_cache,
             state_lock: RwLock::new(()),
@@ -115,13 +122,41 @@ impl StorageState {
         self.counter.fetch_add(1, Ordering::SeqCst)
     }
 
-    pub fn scan(&mut self) -> impl StorageIterator<Item = KeyValuePair> {
-        // build memtable iterator
-        let mut memtable_iterators = vec![MemTableIterator::new(&self.current_memtable)];
-        for memtable in &self.frozen_memtables {
-            memtable_iterators.push(MemTableIterator::new(memtable));
+    pub fn scan(
+        &mut self,
+        // lower: Bound<&[u8]>,
+        // upper: Bound<&[u8]>,
+    ) -> Result<impl StorageIterator<Item = KeyValuePair>> {
+        let memtable_merge_iterator: MergeIterator<MemTableIterator>;
+        let sst_snapshot: VecDeque<Arc<Sst>>;
+        {
+            // acquire read lock
+            let _rlock = self.state_lock.read().unwrap();
+
+            // build memtable iterator
+            let memtables_snapshot =
+                iter::once(self.current_memtable.clone()).chain(self.frozen_memtables.clone());
+            let memtable_iterators = memtables_snapshot
+                .map(|memtable| MemTableIterator::new(&memtable))
+                .collect();
+            memtable_merge_iterator = MergeIterator::new(memtable_iterators);
+
+            // snapshot l0 ssts
+            sst_snapshot = self.ssts.clone();
         }
-        MergeIterator::new(memtable_iterators)
+
+        // build l0 sst iterator
+        // ok to do this outside of read lock as sst files will never be modified
+        let mut l0_sst_iterators = vec![];
+        for sst in sst_snapshot {
+            // if range_overlap(lower, upper, sst., target_upper)
+            let sst_iterator = SSTIterator::create_and_seek_to_first(sst)?;
+            l0_sst_iterators.push(sst_iterator);
+        }
+        let l0_sst_merge_iterator = MergeIterator::new(l0_sst_iterators);
+        let two_merge_iterator =
+            TwoMergeIterator::new(memtable_merge_iterator, l0_sst_merge_iterator);
+        Ok(two_merge_iterator)
     }
 
     pub fn flush_next_memtable_to_l0(&mut self) -> Result<()> {
@@ -152,7 +187,8 @@ impl StorageState {
                 Some(self.block_cache.clone()),
             )?;
             // add to L0 and remove from memtables
-            self.l0_ssts.push_front(sst.get_id());
+            self.l0_sst_ids.push_front(sst.get_id());
+            self.ssts.push_front(Arc::new(sst));
             self.frozen_memtables.pop_back();
         }
         Ok(())
@@ -231,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scan() {
+    fn test_scan_memtables_only() {
         let dir = tempdir().unwrap();
         let options = StorageStateOptions {
             sst_max_size_bytes: 4,
@@ -244,7 +280,34 @@ mod tests {
         // new kv entry can't fit in current memtable, so the memtable should be frozen
         storage_state.put("k2".as_bytes(), "v2".as_bytes()).unwrap();
         assert_eq!(storage_state.frozen_memtables.len(), 1);
-        for (i, item) in storage_state.scan().enumerate() {
+        for (i, item) in storage_state.scan().unwrap().enumerate() {
+            assert!(item.key.get_key() == format!("k{}", i + 1));
+        }
+    }
+
+    #[test]
+    fn test_scan_with_l0_ssts() {
+        let dir = tempdir().unwrap();
+        let options = StorageStateOptions {
+            sst_max_size_bytes: 4,
+            block_max_size_bytes: 4,
+            block_cache_size_bytes: 0,
+            path: dir.path().to_owned(),
+        };
+        let mut storage_state = StorageState::open(options).unwrap();
+        storage_state.put("k1".as_bytes(), "v1".as_bytes()).unwrap();
+        // new kv entry can't fit in current memtable, so the memtable should be frozen
+        storage_state.put("k2".as_bytes(), "v2".as_bytes()).unwrap();
+        assert_eq!(storage_state.frozen_memtables.len(), 1);
+        // flush to sst
+        storage_state.flush_next_memtable_to_l0().unwrap();
+        assert_eq!(storage_state.frozen_memtables.len(), 0);
+        assert_eq!(storage_state.l0_sst_ids.len(), 1);
+        // new kv entry can't fit in current memtable, so the memtable should be frozen
+        storage_state.put("k3".as_bytes(), "v3".as_bytes()).unwrap();
+        assert_eq!(storage_state.frozen_memtables.len(), 1);
+
+        for (i, item) in storage_state.scan().unwrap().enumerate() {
             assert!(item.key.get_key() == format!("k{}", i + 1));
         }
     }
@@ -265,14 +328,14 @@ mod tests {
             .unwrap();
         storage_state.freeze_memtable().unwrap();
         assert_eq!(storage_state.frozen_memtables.len(), 1);
-        assert!(storage_state.l0_ssts.is_empty());
+        assert!(storage_state.l0_sst_ids.is_empty());
 
         // flush the memtable
         let res = storage_state.flush_next_memtable_to_l0();
         assert!(res.is_ok());
 
         // assert sst created
-        assert_eq!(storage_state.l0_ssts.len(), 1);
+        assert_eq!(storage_state.l0_sst_ids.len(), 1);
         assert!(storage_state.frozen_memtables.is_empty());
     }
 }

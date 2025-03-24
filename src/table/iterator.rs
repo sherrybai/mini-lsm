@@ -78,7 +78,7 @@ impl Iterator for SSTIterator {
         }
         let current_key = self.current_kv.clone()?.key;
         let current_meta_block = &self.sst.meta_blocks[self.block_index];
-        if current_key.get_key() < current_meta_block.get_last_key() {
+        if current_key.get_key() < current_meta_block.get_last_key().get_key() {
             let res = self.block_iterator.next();
             self.current_kv = self.block_iterator.peek();
             res

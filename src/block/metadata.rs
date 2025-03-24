@@ -1,14 +1,16 @@
 use bytes::Bytes;
 
+use crate::kv::timestamped_key::TimestampedKey;
+
 #[derive(Debug, PartialEq)]
 pub struct BlockMetadata {
     offset: u32,
-    first_key: Bytes,
-    last_key: Bytes,
+    first_key: TimestampedKey,
+    last_key: TimestampedKey,
 }
 
 impl BlockMetadata {
-    pub fn new(offset: u32, first_key: Bytes, last_key: Bytes) -> Self {
+    pub fn new(offset: u32, first_key: TimestampedKey, last_key: TimestampedKey) -> Self {
         Self {
             offset,
             first_key,
@@ -22,19 +24,21 @@ impl BlockMetadata {
         // size of first key
         let first_key_size: u16 = self
             .first_key
+            .get_key()
             .len()
             .try_into()
             .expect("size must fit in 2 bytes");
         encoded.extend(first_key_size.to_be_bytes());
-        encoded.extend(&self.first_key);
+        encoded.extend(&self.first_key.get_key());
         // size of last key
         let last_key_size: u16 = self
             .last_key
+            .get_key()
             .len()
             .try_into()
             .expect("size must fit in 2 bytes");
         encoded.extend(last_key_size.to_be_bytes());
-        encoded.extend(&self.last_key);
+        encoded.extend(&self.last_key.get_key());
         encoded
     }
 
@@ -73,8 +77,8 @@ impl BlockMetadata {
         (
             Self {
                 offset,
-                first_key,
-                last_key,
+                first_key: TimestampedKey::new(first_key),
+                last_key: TimestampedKey::new(last_key),
             },
             current_index,
         )
@@ -92,12 +96,12 @@ impl BlockMetadata {
         res
     }
 
-    pub fn get_first_key(&self) -> &Bytes {
-        &self.first_key
+    pub fn get_first_key(&self) -> TimestampedKey {
+        self.first_key.clone()
     }
 
-    pub fn get_last_key(&self) -> &Bytes {
-        &self.last_key
+    pub fn get_last_key(&self) -> TimestampedKey {
+        self.last_key.clone()
     }
 
     pub fn get_offset(&self) -> u32 {
@@ -107,11 +111,11 @@ impl BlockMetadata {
 
 #[cfg(test)]
 mod tests {
-    use crate::block::metadata::BlockMetadata;
+    use crate::{block::metadata::BlockMetadata, kv::timestamped_key::TimestampedKey};
 
     #[test]
     fn test_encode_decode() {
-        let block_meta = BlockMetadata::new(4, "k1".as_bytes().into(), "k2".as_bytes().into());
+        let block_meta = BlockMetadata::new(4, TimestampedKey::new("k1".as_bytes().into()), TimestampedKey::new("k2".as_bytes().into()));
         let mut expected = vec![0, 0, 0, 4];
         expected.extend(vec![0, 2]);
         expected.extend("k1".as_bytes());
@@ -129,8 +133,8 @@ mod tests {
 
     #[test]
     fn test_decode_to_list() {
-        let block_meta_1 = BlockMetadata::new(4, "k1".as_bytes().into(), "k2".as_bytes().into());
-        let block_meta_2 = BlockMetadata::new(4, "k3".as_bytes().into(), "k4".as_bytes().into());
+        let block_meta_1 = BlockMetadata::new(4, TimestampedKey::new("k1".as_bytes().into()), TimestampedKey::new("k2".as_bytes().into()));
+        let block_meta_2 = BlockMetadata::new(4, TimestampedKey::new("k3".as_bytes().into()), TimestampedKey::new("k4".as_bytes().into()));
         let mut encoded = block_meta_1.encode();
         encoded.extend(block_meta_2.encode());
 
