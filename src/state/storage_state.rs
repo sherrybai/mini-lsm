@@ -15,11 +15,11 @@ pub struct StorageState {
 
     state_lock: RwLock<()>,
     counter: AtomicUsize,
-    options: StorageStateOptions
+    options: Arc<StorageStateOptions>
 }
 
 impl StorageState {
-    pub fn new(options: StorageStateOptions) -> Self {
+    pub fn new(options: Arc<StorageStateOptions>) -> Self {
         let counter: AtomicUsize = AtomicUsize::new(0);
         let current_memtable = Arc::new(MemTable::new(counter.fetch_add(1, Ordering::SeqCst)));
         // newest to oldest frozen memtables
@@ -98,17 +98,22 @@ impl StorageState {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use bytes::Bytes;
+    use tempfile::tempdir;
 
     use crate::state::{storage_state::StorageState, storage_state_options::StorageStateOptions};
 
     #[test]
     fn test_storage_state_get_put() {
-        let options = StorageStateOptions {
+        let dir = tempdir().unwrap();
+        let options = Arc::new(StorageStateOptions {
             sst_max_size_bytes: 128,
             block_max_size_bytes: 0,
             block_cache_size_bytes: 0,
-        };
+            path: dir.path().to_owned(),
+        });
         let mut storage_state = StorageState::new(options);
         storage_state
             .put("hello".as_bytes(), "world".as_bytes())
@@ -128,11 +133,13 @@ mod tests {
 
     #[test]
     fn test_storage_state_freeze() {
-        let options = StorageStateOptions {
+        let dir = tempdir().unwrap();
+        let options = Arc::new(StorageStateOptions {
             sst_max_size_bytes: 9,
             block_max_size_bytes: 0,
             block_cache_size_bytes: 0,
-        };
+            path: dir.path().to_owned(),
+        });
         let mut storage_state = StorageState::new(options);
         storage_state
             .put("hello".as_bytes(), "world".as_bytes())
@@ -181,11 +188,13 @@ mod tests {
 
     #[test]
     fn test_scan() {
-        let options = StorageStateOptions {
+        let dir = tempdir().unwrap();
+        let options = Arc::new(StorageStateOptions {
             sst_max_size_bytes: 4,
             block_max_size_bytes: 0,
             block_cache_size_bytes: 0,
-        };
+            path: dir.path().to_owned(),
+        });
         let mut storage_state = StorageState::new(options);
         storage_state
             .put("k1".as_bytes(), "v1".as_bytes())

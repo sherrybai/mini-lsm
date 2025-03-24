@@ -63,6 +63,11 @@ impl MemTable {
         }
         Ok(())
     }
+
+    pub fn flush(&self) -> Result<()> {
+        
+        Ok(())
+    }
 }
 
 #[cfg(test)]
