@@ -68,9 +68,10 @@ impl StorageState {
             options,
         })
     }
-    pub fn get(&mut self, key: &[u8]) -> Option<Bytes> {
+    pub fn get(&mut self, key: &[u8]) -> Result<Option<Bytes>> {
         let _rlock = self.state_lock.read().unwrap();
 
+        // look up value in memtables
         let mut res = self.current_memtable.get(key);
         if res.is_none() {
             for memtable in &self.frozen_memtables {
@@ -82,10 +83,29 @@ impl StorageState {
         }
         if let Some(val) = &res {
             if val == TOMBSTONE {
-                return None;
+                return Ok(None);
+            }
+            return Ok(res);
+        }
+
+        // if not found in memtable, look up in SSTs
+        for sst in &self.ssts {
+            if sst.get_first_key().get_key() <= key && key <= sst.get_last_key().get_key() {
+                let found_kv = SSTIterator::create_and_seek_to_key(
+                    sst.clone(),
+                    TimestampedKey::new(Bytes::copy_from_slice(key)),
+                )?
+                .peek();
+                if found_kv.as_ref().is_some_and(|kv| kv.key.get_key() == key) {
+                    let val = found_kv.unwrap().value;
+                    if val == TOMBSTONE {
+                        return Ok(None);
+                    }
+                    return Ok(Some(val));
+                }
             }
         }
-        res
+        Ok(None)
     }
 
     pub fn put(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
@@ -100,7 +120,7 @@ impl StorageState {
     }
 
     pub fn delete(&mut self, key: &[u8]) -> Result<()> {
-        if self.get(key).is_none() {
+        if self.get(key)?.is_none() {
             return Err(anyhow!("key cannot be deleted because it does not exist"));
         }
         let _rlock = self.state_lock.read().unwrap();
@@ -252,12 +272,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            storage_state.get("hello".as_bytes()).unwrap(),
+            storage_state.get("hello".as_bytes()).unwrap().unwrap(),
             Bytes::from("world".as_bytes())
         );
 
         storage_state.delete("hello".as_bytes()).unwrap();
-        assert_eq!(storage_state.get("hello".as_bytes()), None);
+        assert_eq!(storage_state.get("hello".as_bytes()).unwrap(), None);
     }
 
     #[test]
@@ -287,14 +307,14 @@ mod tests {
 
         // test get entries
         assert_eq!(
-            storage_state.get("hello".as_bytes()).unwrap(),
+            storage_state.get("hello".as_bytes()).unwrap().unwrap(),
             Bytes::from("world".as_bytes())
         );
         assert_eq!(
-            storage_state.get("another".as_bytes()).unwrap(),
+            storage_state.get("another".as_bytes()).unwrap().unwrap(),
             Bytes::from("entry".as_bytes())
         );
-        assert_eq!(storage_state.get("does_not_exist".as_bytes()), None);
+        assert_eq!(storage_state.get("does_not_exist".as_bytes()).unwrap(), None);
     }
 
     #[test]
@@ -321,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_with_l0_ssts() {
+    fn test_get_scan_with_l0_ssts() {
         let dir = tempdir().unwrap();
         let options = StorageStateOptions {
             sst_max_size_bytes: 4,
@@ -341,6 +361,11 @@ mod tests {
         // new kv entry can't fit in current memtable, so the memtable should be frozen
         storage_state.put("k3".as_bytes(), "v3".as_bytes()).unwrap();
         assert_eq!(storage_state.frozen_memtables.len(), 1);
+
+        assert_eq!(storage_state.get("k1".as_bytes()).unwrap().unwrap(), "v1".as_bytes());
+        assert_eq!(storage_state.get("k2".as_bytes()).unwrap().unwrap(), "v2".as_bytes());
+        assert_eq!(storage_state.get("k3".as_bytes()).unwrap().unwrap(), "v3".as_bytes());
+        assert!(storage_state.get("k2.5".as_bytes()).unwrap().is_none());
 
         for (i, item) in storage_state
             .scan(Bound::Unbounded, Bound::Unbounded)
