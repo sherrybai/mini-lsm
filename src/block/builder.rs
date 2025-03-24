@@ -22,7 +22,7 @@ impl BlockBuilder {
     }
 
     pub fn add(&mut self, kv_pair: KeyValuePair) -> Result<()> {
-        if self.get_block_size_with_kv(&kv_pair) > self.block_size {
+        if self.data.len() > 0 && self.get_block_size_with_kv(&kv_pair) > self.block_size {
             return Err(anyhow!("max block size reached"));
         }
 
