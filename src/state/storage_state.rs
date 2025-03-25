@@ -148,7 +148,7 @@ impl StorageState {
         &mut self,
         lower: Bound<&[u8]>,
         upper: Bound<&[u8]>,
-    ) -> Result<impl StorageIterator<Item = KeyValuePair>> {
+    ) -> Result<impl StorageIterator + Iterator<Item = KeyValuePair>> {
         let memtable_merge_iterator: MergeIterator<MemTableIterator>;
         let sst_snapshot: VecDeque<Arc<Sst>>;
         {
@@ -314,7 +314,10 @@ mod tests {
             storage_state.get("another".as_bytes()).unwrap().unwrap(),
             Bytes::from("entry".as_bytes())
         );
-        assert_eq!(storage_state.get("does_not_exist".as_bytes()).unwrap(), None);
+        assert_eq!(
+            storage_state.get("does_not_exist".as_bytes()).unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -362,9 +365,18 @@ mod tests {
         storage_state.put("k3".as_bytes(), "v3".as_bytes()).unwrap();
         assert_eq!(storage_state.frozen_memtables.len(), 1);
 
-        assert_eq!(storage_state.get("k1".as_bytes()).unwrap().unwrap(), "v1".as_bytes());
-        assert_eq!(storage_state.get("k2".as_bytes()).unwrap().unwrap(), "v2".as_bytes());
-        assert_eq!(storage_state.get("k3".as_bytes()).unwrap().unwrap(), "v3".as_bytes());
+        assert_eq!(
+            storage_state.get("k1".as_bytes()).unwrap().unwrap(),
+            "v1".as_bytes()
+        );
+        assert_eq!(
+            storage_state.get("k2".as_bytes()).unwrap().unwrap(),
+            "v2".as_bytes()
+        );
+        assert_eq!(
+            storage_state.get("k3".as_bytes()).unwrap().unwrap(),
+            "v3".as_bytes()
+        );
         assert!(storage_state.get("k2.5".as_bytes()).unwrap().is_none());
 
         for (i, item) in storage_state
