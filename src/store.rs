@@ -1,20 +1,23 @@
-use std::{ops::Bound, sync::Arc, thread};
+use std::{
+    ops::Bound,
+    sync::{Arc, Mutex},
+    thread,
+};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use bytes::Bytes;
 
 use crate::{
     iterator::StorageIterator,
-    kv::kv_pair::KeyValuePair,
-    state::{storage_state::StorageState, storage_state_options::StorageStateOptions},
+    state::{StorageState, storage_state_options::StorageStateOptions},
 };
 
 pub struct LsmStore {
     // send notification to end flush
     flush_notifier: crossbeam_channel::Sender<()>,
     // handle for flush thread
-    // flush_thread: thread::JoinHandle<()>,
-    storage_state: StorageState,
+    flush_thread: Mutex<Option<thread::JoinHandle<()>>>,
+    storage_state: Arc<StorageState>,
 }
 
 impl Drop for LsmStore {
@@ -25,15 +28,27 @@ impl Drop for LsmStore {
 
 impl LsmStore {
     pub fn open(options: StorageStateOptions) -> Result<LsmStore> {
-        let storage_state = StorageState::open(options)?;
+        let storage_state = Arc::new(StorageState::open(options)?);
 
         // set up flush background thread
         let (flush_notifier, receiver) = crossbeam_channel::unbounded();
-
-        Ok(Self { 
+        let flush_thread = Mutex::new(storage_state.spawn_flush_thread(receiver)?);
+        Ok(Self {
             flush_notifier,
-            storage_state 
+            flush_thread,
+            storage_state,
         })
+    }
+
+    pub fn close(&self) -> Result<()> {
+        // end flush thread
+        self.flush_notifier.send(()).ok();
+        let mut flush_thread = self.flush_thread.lock().map_err(|e| anyhow!("{:?}", e))?;
+        if let Some(thread) = flush_thread.take() {
+            thread.join().map_err(|e| anyhow!("{:?}", e))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
@@ -48,11 +63,15 @@ impl LsmStore {
         self.storage_state.delete(key)
     }
 
-    pub fn scan(
-        &self,
-        lower: Bound<&[u8]>,
-        upper: Bound<&[u8]>,
-    ) -> Result<impl StorageIterator> {
+    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> Result<impl StorageIterator> {
         self.storage_state.scan(lower, upper)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_open_close() {
+        
     }
 }
