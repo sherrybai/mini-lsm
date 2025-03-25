@@ -1,4 +1,4 @@
-use std::ops::Bound;
+use std::{ops::Bound, sync::Arc, thread};
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -10,32 +10,49 @@ use crate::{
 };
 
 pub struct LsmStore {
+    // send notification to end flush
+    flush_notifier: crossbeam_channel::Sender<()>,
+    // handle for flush thread
+    // flush_thread: thread::JoinHandle<()>,
     storage_state: StorageState,
+}
+
+impl Drop for LsmStore {
+    fn drop(&mut self) {
+        self.flush_notifier.send(()).ok();
+    }
 }
 
 impl LsmStore {
     pub fn open(options: StorageStateOptions) -> Result<LsmStore> {
         let storage_state = StorageState::open(options)?;
-        Ok(Self { storage_state })
+
+        // set up flush background thread
+        let (flush_notifier, receiver) = crossbeam_channel::unbounded();
+
+        Ok(Self { 
+            flush_notifier,
+            storage_state 
+        })
     }
 
-    pub fn get(&mut self, key: &[u8]) -> Result<Option<Bytes>> {
+    pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
         self.storage_state.get(key)
     }
 
-    pub fn put(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
         self.storage_state.put(key, value)
     }
 
-    pub fn delete(&mut self, key: &[u8]) -> Result<()> {
+    pub fn delete(&self, key: &[u8]) -> Result<()> {
         self.storage_state.delete(key)
     }
 
     pub fn scan(
-        &mut self,
+        &self,
         lower: Bound<&[u8]>,
         upper: Bound<&[u8]>,
-    ) -> Result<impl StorageIterator + Iterator<Item = KeyValuePair>> {
+    ) -> Result<impl StorageIterator> {
         self.storage_state.scan(lower, upper)
     }
 }
