@@ -9,7 +9,7 @@ use bytes::Bytes;
 
 use crate::{
     iterator::StorageIterator,
-    state::{StorageState, storage_state_options::StorageStateOptions},
+    state::{storage_state_options::StorageStateOptions, StorageState},
 };
 
 pub struct LsmStore {
@@ -23,6 +23,12 @@ pub struct LsmStore {
 impl Drop for LsmStore {
     fn drop(&mut self) {
         self.flush_notifier.send(()).ok();
+        // join all threads to avoid unexpected behavior
+        // https://matklad.github.io/2019/08/23/join-your-threads.html
+        let mut flush_thread = self.flush_thread.lock().unwrap();
+        if let Some(thread) = flush_thread.take() {
+            thread.join().unwrap();
+        }
     }
 }
 
@@ -70,8 +76,24 @@ impl LsmStore {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+
+    use crate::state::storage_state_options::StorageStateOptions;
+
+    use super::LsmStore;
+
     #[test]
     fn test_open_close() {
-        
+        let dir = tempdir().unwrap();
+        let options = StorageStateOptions {
+            sst_max_size_bytes: 128,
+            block_max_size_bytes: 0,
+            block_cache_size_bytes: 0,
+            path: dir.path().to_owned(),
+            num_memtables_limit: 5,
+        };
+
+        let store = LsmStore::open(options).unwrap();
+        store.close().unwrap();
     }
 }
