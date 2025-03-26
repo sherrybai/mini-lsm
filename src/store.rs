@@ -94,6 +94,16 @@ mod tests {
         };
 
         let store = LsmStore::open(options).unwrap();
+        {
+            let thread = store.flush_thread.lock().unwrap();
+            assert!(!thread.as_ref().unwrap().is_finished());
+        }
         store.close().unwrap();
+        {
+            let thread = store.flush_thread.lock().unwrap();
+            // Option::take() replaces value in the mutex with None
+            // JoinHandle is moved out of the option right before joining
+            assert!(thread.as_ref().is_none());
+        }
     }
 }

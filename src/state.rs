@@ -7,7 +7,9 @@ use std::{
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, RwLock,
-    }, thread, time::Duration,
+    },
+    thread,
+    time::Duration,
 };
 
 use anyhow::{anyhow, Ok, Result};
@@ -258,7 +260,10 @@ impl StorageState {
         }
     }
 
-    pub fn spawn_flush_thread(self: &Arc<Self>, end_flush: crossbeam_channel::Receiver<()>) -> Result<Option<thread::JoinHandle<()>>> {
+    pub fn spawn_flush_thread(
+        self: &Arc<Self>,
+        end_flush: crossbeam_channel::Receiver<()>,
+    ) -> Result<Option<thread::JoinHandle<()>>> {
         let this = self.clone();
         let handle = thread::spawn(move || {
             let ticker = crossbeam_channel::tick(Duration::from_millis(50));
