@@ -5,4 +5,5 @@ pub struct StorageStateOptions {
     pub block_max_size_bytes: usize,
     pub block_cache_size_bytes: u64,
     pub path: PathBuf,
+    pub num_memtables_limit: usize,
 }
