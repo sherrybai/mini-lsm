@@ -248,6 +248,19 @@ impl StorageState {
         Ok(())
     }
 
+    pub fn flush_all_memtables(&self) -> Result<()> {
+        self.freeze_memtable()?;
+        loop {
+            let num_memtables = {
+                let ro_snapshot = self.state_lock.read().unwrap();
+                ro_snapshot.frozen_memtables.len()
+            };
+            if num_memtables == 0 { break; }
+            self.flush_next_memtable_to_l0()?;
+        }
+        Ok(())
+    }
+
     pub fn trigger_flush(&self) -> Result<()> {
         let should_trigger_flush = {
             let ro_snapshot = self.state_lock.read().unwrap();
@@ -478,6 +491,36 @@ mod tests {
 
         // assert sst created
         assert_eq!(storage_state.get_snapshot().l0_sst_ids.len(), 1);
+        assert!(storage_state.get_snapshot().frozen_memtables.is_empty());
+    }
+
+    #[test]
+    fn test_flush_all_memtables() {
+        // set up storage state
+        let dir = tempdir().unwrap();
+        let options = StorageStateOptions {
+            sst_max_size_bytes: 10,
+            block_max_size_bytes: 0,
+            block_cache_size_bytes: 0,
+            path: dir.path().to_owned(),
+            num_memtables_limit: 5,
+        };
+        let storage_state = StorageState::open(options).unwrap();
+        storage_state
+            .put("k1".as_bytes(), "v1".as_bytes())
+            .unwrap();
+        storage_state.freeze_memtable().unwrap();
+        assert_eq!(storage_state.get_snapshot().frozen_memtables.len(), 1);
+        storage_state
+            .put("k2".as_bytes(), "v2".as_bytes())
+            .unwrap();
+
+        // flush the memtable
+        let res = storage_state.flush_all_memtables();
+        assert!(res.is_ok());
+
+        // assert sst created
+        assert_eq!(storage_state.get_snapshot().l0_sst_ids.len(), 2);
         assert!(storage_state.get_snapshot().frozen_memtables.is_empty());
     }
 }
