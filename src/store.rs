@@ -50,10 +50,11 @@ impl LsmStore {
         self.flush_notifier.send(()).ok();
         let mut flush_thread = self.flush_thread.lock().map_err(|e| anyhow!("{:?}", e))?;
         if let Some(thread) = flush_thread.take() {
-            thread.join().map_err(|e| anyhow!("{:?}", e))
-        } else {
-            Ok(())
+            thread.join().map_err(|e| anyhow!("{:?}", e))?;
         }
+        // flush all memtables
+        self.storage_state.flush_all_memtables()?;
+        Ok(())
     }
 
     pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
