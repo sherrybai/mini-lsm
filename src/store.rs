@@ -8,8 +8,7 @@ use anyhow::{anyhow, Result};
 use bytes::Bytes;
 
 use crate::{
-    iterator::StorageIterator,
-    state::{storage_state_options::StorageStateOptions, StorageState},
+    iterator::StorageIterator, kv::kv_pair::KeyValuePair, state::{storage_state_options::StorageStateOptions, StorageState}
 };
 
 pub struct LsmStore {
@@ -69,7 +68,7 @@ impl LsmStore {
         self.storage_state.delete(key)
     }
 
-    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> Result<impl StorageIterator> {
+    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> Result<impl StorageIterator + Iterator<Item = KeyValuePair>> {
         self.storage_state.scan(lower, upper)
     }
 }
