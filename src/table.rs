@@ -14,6 +14,7 @@ use crate::table::file::File;
 mod test_utils;
 
 pub mod block_cache;
+pub mod bloom;
 pub mod builder;
 pub mod file;
 pub mod iterator;

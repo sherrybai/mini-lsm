@@ -69,6 +69,7 @@ impl LsmStore {
         self.storage_state.delete(key)
     }
 
+    #[allow(clippy::implied_bounds_in_impls)]
     pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> Result<impl StorageIterator + Iterator<Item = KeyValuePair>> {
         self.storage_state.scan(lower, upper)
     }

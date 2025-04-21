@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::io::stdout().flush()?;
 
         let line = cli_utils::readline()?;
-        let args = shlex::split(&line).unwrap_or(Vec::new());
+        let args = shlex::split(&line).unwrap_or_default();
         let parsed = Cli::try_parse_from(args);
         if parsed.is_err() {
             parsed.err().unwrap().print()?;
