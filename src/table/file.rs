@@ -5,6 +5,8 @@ use anyhow::Result;
 
 use crate::block::metadata::BlockMetadata;
 use crate::block::Block;
+
+use super::bloom::BloomFilter;
 pub struct File {
     file: std::fs::File,
     size: u64,
@@ -41,22 +43,39 @@ impl File {
         Ok(block)
     }
 
-    pub fn get_meta_block_offset(&mut self) -> Result<u32> {
+    pub fn get_meta_block_offset(&mut self, bloom_filter_offset: u32) -> Result<u32> {
+        // last 4 bytes of file
+        let mut buffer = [0; 4];
+        self.file.read_exact_at(&mut buffer, bloom_filter_offset as u64 - 4)?;
+        Ok(u32::from_be_bytes(buffer))
+    }
+
+    pub fn load_meta_blocks(&mut self, meta_block_offset: u32, bloom_filter_offset: u32) -> Result<Vec<BlockMetadata>> {
+        // start of bloom filter - start of meta blocks - 4 bytes for meta_block_offset
+        let meta_encoded_length =
+            usize::try_from(bloom_filter_offset)? - usize::try_from(meta_block_offset)? - 4;
+        let mut buffer: Vec<u8> = vec![0; meta_encoded_length];
+        self.file
+            .read_exact_at(&mut buffer, meta_block_offset.into())?;
+        let block_metadata = BlockMetadata::decode_to_list(&buffer);
+        Ok(block_metadata)
+    }
+
+    pub fn get_bloom_filter_offset(&mut self) -> Result<u32> {
         // last 4 bytes of file
         let mut buffer = [0; 4];
         self.file.read_exact_at(&mut buffer, self.get_size() - 4)?;
         Ok(u32::from_be_bytes(buffer))
     }
 
-    pub fn load_meta_blocks(&mut self, meta_block_offset: u32) -> Result<Vec<BlockMetadata>> {
-        // size of encoded file - size of data - 4 bytes for meta_block_offset
-        let meta_encoded_length =
-            usize::try_from(self.size)? - usize::try_from(meta_block_offset)? - 4;
-        let mut buffer: Vec<u8> = vec![0; meta_encoded_length];
+    pub fn load_bloom_filter(&mut self, bloom_filter_offset: u32) -> Result<BloomFilter> {
+        // size of encoded file - size of data - 4 bytes for bloom_filter_offset
+        let bloom_encoded_length =
+            usize::try_from(self.size)? - usize::try_from(bloom_filter_offset)? - 4;
+        let mut buffer: Vec<u8> = vec![0; bloom_encoded_length];
         self.file
-            .read_exact_at(&mut buffer, meta_block_offset.into())?;
-        let block_metadata = BlockMetadata::decode_to_list(&buffer);
-        Ok(block_metadata)
+            .read_exact_at(&mut buffer, bloom_filter_offset.into())?;
+        Ok(BloomFilter::decode(buffer))
     }
 }
 
@@ -109,10 +128,11 @@ mod tests {
     fn test_load_meta_blocks() {
         let sst = build_sst();
         let mut file = sst.file;
-        let meta_block_offset = file.get_meta_block_offset().unwrap();
+        let bloom_filter_offset = file.get_bloom_filter_offset().unwrap();
+        let meta_block_offset = file.get_meta_block_offset(bloom_filter_offset).unwrap();
         assert_eq!(meta_block_offset, 34);
 
-        let meta_blocks = file.load_meta_blocks(meta_block_offset).unwrap();
+        let meta_blocks = file.load_meta_blocks(meta_block_offset, bloom_filter_offset).unwrap();
         let expected_meta_1 = BlockMetadata::new(
             0,
             TimestampedKey::new("k1".as_bytes().into()),

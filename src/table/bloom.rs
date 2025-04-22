@@ -12,7 +12,7 @@ pub struct BloomFilter {
 }
 
 impl BloomFilter {
-    pub fn from_keys(keys: Vec<&TimestampedKey>) -> Self {
+    pub fn from_keys(keys: Vec<TimestampedKey>) -> Self {
         let n = keys.len();
         let m = Self::get_bit_arr_len(n);
         let k = Self::get_num_hash_functions(m, n);
@@ -44,7 +44,7 @@ impl BloomFilter {
         ).round() as u8
     }
 
-    fn get_indices_for_key(key: &TimestampedKey, m: usize, k: u8) -> Vec<usize> {
+    fn get_indices_for_key(key: TimestampedKey, m: usize, k: u8) -> Vec<usize> {
         // hash the key
         let hash64 = xxh3_64(&key.get_key());
         let (h1, h2) = ((hash64 >> 32) as u32, hash64 as u32); 
@@ -60,7 +60,7 @@ impl BloomFilter {
         indices
     }
 
-    pub fn maybe_contains(&self, key: &TimestampedKey) -> bool {
+    pub fn maybe_contains(&self, key: TimestampedKey) -> bool {
         let indices = Self::get_indices_for_key(key, self.bit_vec.len(), self.k);
         for i in indices {
             if !self.bit_vec[i] {
@@ -99,7 +99,7 @@ mod tests {
         let k1 = TimestampedKey::new("hello".as_bytes().into());
         let k2 = TimestampedKey::new("world".as_bytes().into());
         let bloom_filter = BloomFilter::from_keys(
-            vec![&k1, &k2],
+            vec![k1.clone(), k2.clone()],
         );
 
         // verify with 
@@ -108,11 +108,11 @@ mod tests {
         // https://hur.st/bloomfilter/?n=2&p=&m=24&k=
         assert_eq!(bloom_filter.k, 8);
 
-        assert!(bloom_filter.maybe_contains(&k1));
-        assert!(bloom_filter.maybe_contains(&k2));
+        assert!(bloom_filter.maybe_contains(k1));
+        assert!(bloom_filter.maybe_contains(k2));
 
         let k3 = TimestampedKey::new("not here".as_bytes().into());
-        assert!(!bloom_filter.maybe_contains(&k3));
+        assert!(!bloom_filter.maybe_contains(k3));
     }
 
     #[test]
@@ -120,7 +120,7 @@ mod tests {
         let k1 = TimestampedKey::new("hello".as_bytes().into());
         let k2 = TimestampedKey::new("world".as_bytes().into());
         let mut bloom_filter = BloomFilter::from_keys(
-            vec![&k1, &k2],
+            vec![k1, k2],
         );
         let encoded = bloom_filter.encode();
         let k = *encoded.last().unwrap();

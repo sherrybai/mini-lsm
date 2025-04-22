@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use block_cache::BlockCache;
+use bloom::BloomFilter;
 
 use crate::block::metadata::BlockMetadata;
 use crate::block::Block;
@@ -26,6 +27,7 @@ pub struct Sst {
     meta_blocks: Vec<BlockMetadata>,
     meta_block_offset: u32,
     block_cache: Option<Arc<BlockCache>>,
+    bloom_filter: BloomFilter,
 }
 
 impl Sst {
@@ -35,6 +37,7 @@ impl Sst {
         meta_blocks: Vec<BlockMetadata>,
         meta_block_offset: u32,
         block_cache: Option<Arc<BlockCache>>,
+        bloom_filter: BloomFilter,
     ) -> Self {
         Self {
             id,
@@ -42,20 +45,24 @@ impl Sst {
             meta_blocks,
             meta_block_offset,
             block_cache,
+            bloom_filter,
         }
     }
 
     // create from file
     pub fn open(id: usize, path: PathBuf, block_cache: Option<Arc<BlockCache>>) -> Result<Self> {
         let mut file = File::open(path)?;
-        let meta_block_offset = file.get_meta_block_offset()?;
-        let meta_blocks = file.load_meta_blocks(meta_block_offset)?;
+        let bloom_filter_offset = file.get_bloom_filter_offset()?;
+        let bloom_filter = file.load_bloom_filter(bloom_filter_offset)?;
+        let meta_block_offset = file.get_meta_block_offset(bloom_filter_offset)?;
+        let meta_blocks = file.load_meta_blocks(meta_block_offset, bloom_filter_offset)?;
         Ok(Self::new(
             id,
             file,
             meta_blocks,
             meta_block_offset,
             block_cache,
+            bloom_filter,
         ))
     }
 
