@@ -97,7 +97,7 @@ impl StorageState {
 
         // if not found in memtable, look up in SSTs
         for sst in &ro_snapshot.ssts {
-            if sst.get_first_key().get_key() <= key && key <= sst.get_last_key().get_key() {
+            if sst.maybe_contains_key(key) {
                 let found_kv = SSTIterator::create_and_seek_to_key(
                     sst.clone(),
                     TimestampedKey::new(Bytes::copy_from_slice(key)),

@@ -9,7 +9,7 @@ use crate::{
     table::File,
 };
 
-use super::{block_cache::BlockCache, Sst};
+use super::{block_cache::BlockCache, bloom::BloomFilter, Sst};
 
 pub struct SSTBuilder {
     block_builder: BlockBuilder,
@@ -17,9 +17,10 @@ pub struct SSTBuilder {
     block_meta_list: Vec<BlockMetadata>,
     block_size: usize,
     block_data: Vec<u8>,
-    offset: u32,
+    meta_block_offset: u32,
     first_key: TimestampedKey,
     last_key: TimestampedKey,
+    all_keys: Vec<TimestampedKey>,
 }
 
 impl SSTBuilder {
@@ -29,10 +30,11 @@ impl SSTBuilder {
             block_meta_list: Vec::new(),
             block_size,
             block_data: Vec::new(),
-            offset: 0,
+            meta_block_offset: 0,
             // junk values before we add keys
             first_key: TimestampedKey::new("".as_bytes().into()),
             last_key: TimestampedKey::new("".as_bytes().into()),
+            all_keys: Vec::new(),
         }
     }
 
@@ -41,7 +43,7 @@ impl SSTBuilder {
         if !self.block_builder.is_empty() && self.block_builder.get_block_size_with_kv(&kv) >= self.block_size {
             self.finalize_block();
             // update metadata
-            self.offset =
+            self.meta_block_offset =
                 u32::try_from(self.block_data.len()).expect("size of SST must fit in 4 bytes");
             self.first_key = kv.key.clone();
         }
@@ -50,6 +52,7 @@ impl SSTBuilder {
             self.first_key = kv.key.clone();
         }
         self.last_key = kv.key.clone();
+        self.all_keys.push(kv.key.clone());
         self.block_builder.add(kv)?;
         Ok(())
     }
@@ -57,7 +60,7 @@ impl SSTBuilder {
     pub fn finalize_block(&mut self) {
         // build block metadata
         let block_meta =
-            BlockMetadata::new(self.offset, self.first_key.clone(), self.last_key.clone());
+            BlockMetadata::new(self.meta_block_offset, self.first_key.clone(), self.last_key.clone());
         self.block_meta_list.push(block_meta);
         // build block
         let old_block_builder =
@@ -69,16 +72,24 @@ impl SSTBuilder {
     pub fn build(mut self, id: usize, path: impl AsRef<Path>, block_cache: Option<Arc<BlockCache>>) -> Result<Sst> {
         // finalize last block
         self.finalize_block();
-        self.offset =
-            u32::try_from(self.block_data.len()).expect("size of SST must fit in 4 bytes");
 
         // encode SST
         let mut buffer: Vec<u8> = Vec::new();
         buffer.extend(self.block_data);
+
+        self.meta_block_offset = u32::try_from(buffer.len()).expect("size of SST must fit in 4 bytes");
         for block_meta in self.block_meta_list.iter() {
             buffer.extend(block_meta.encode());
         }
-        buffer.extend(self.offset.to_be_bytes());
+        buffer.extend(self.meta_block_offset.to_be_bytes());
+
+        // build bloom filter
+        let mut bloom_filter = BloomFilter::from_keys(self.all_keys);
+        let encoded_bloom = bloom_filter.encode();
+        let bloom_filter_offset = u32::try_from(buffer.len()).expect("bloom offset must fit in 4 bytes");
+        
+        buffer.extend(encoded_bloom);
+        buffer.extend(bloom_filter_offset.to_be_bytes());
 
         // dump to file
         let file = File::create(path, buffer)?;
@@ -87,8 +98,9 @@ impl SSTBuilder {
                 id, 
                 file, 
                 self.block_meta_list,
-                self.offset,
+                self.meta_block_offset,
                 block_cache,
+                bloom_filter,
             )
         )
     }
@@ -142,8 +154,11 @@ mod tests {
         let file_contents: Vec<u8> = sst.file.get_contents_as_bytes().unwrap();
 
         // check that data size, meta size, and offset value are correct
-        let meta_offset = u32::from_be_bytes(file_contents[file_contents.len()-4..].try_into().expect("chunk of size 4"));
+        let bloom_offset = u32::from_be_bytes(file_contents[file_contents.len()-4..].try_into().expect("chunk of size 4"));
+        let meta_offset = u32::from_be_bytes(file_contents[bloom_offset as usize-4..bloom_offset as usize].try_into().expect("chunk of size 4"));
+
         let expected_data_size = file_contents.len() 
+        - (file_contents.len() - bloom_offset as usize) // size of bloom filter + offset
         - 4 // size of meta_offset
         - 2 * 12; // two metadata blocks of 12 bytes each (4 for offset, 4 each for first and last key)
         // start index of meta blocks should be equal to data size in bytes

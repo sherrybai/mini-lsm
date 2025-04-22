@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use block_cache::BlockCache;
+use bloom::BloomFilter;
 
 use crate::block::metadata::BlockMetadata;
 use crate::block::Block;
@@ -14,6 +15,7 @@ use crate::table::file::File;
 mod test_utils;
 
 pub mod block_cache;
+pub mod bloom;
 pub mod builder;
 pub mod file;
 pub mod iterator;
@@ -25,6 +27,7 @@ pub struct Sst {
     meta_blocks: Vec<BlockMetadata>,
     meta_block_offset: u32,
     block_cache: Option<Arc<BlockCache>>,
+    bloom_filter: BloomFilter,
 }
 
 impl Sst {
@@ -34,6 +37,7 @@ impl Sst {
         meta_blocks: Vec<BlockMetadata>,
         meta_block_offset: u32,
         block_cache: Option<Arc<BlockCache>>,
+        bloom_filter: BloomFilter,
     ) -> Self {
         Self {
             id,
@@ -41,20 +45,24 @@ impl Sst {
             meta_blocks,
             meta_block_offset,
             block_cache,
+            bloom_filter,
         }
     }
 
     // create from file
     pub fn open(id: usize, path: PathBuf, block_cache: Option<Arc<BlockCache>>) -> Result<Self> {
         let mut file = File::open(path)?;
-        let meta_block_offset = file.get_meta_block_offset()?;
-        let meta_blocks = file.load_meta_blocks(meta_block_offset)?;
+        let bloom_filter_offset = file.get_bloom_filter_offset()?;
+        let bloom_filter = file.load_bloom_filter(bloom_filter_offset)?;
+        let meta_block_offset = file.get_meta_block_offset(bloom_filter_offset)?;
+        let meta_blocks = file.load_meta_blocks(meta_block_offset, bloom_filter_offset)?;
         Ok(Self::new(
             id,
             file,
             meta_blocks,
             meta_block_offset,
             block_cache,
+            bloom_filter,
         ))
     }
 
@@ -105,11 +113,23 @@ impl Sst {
     }
 
     pub fn get_first_key(&self) -> TimestampedKey {
-        self.meta_blocks.first().expect("sst must contain at least one block").get_first_key()
+        self.meta_blocks
+            .first()
+            .expect("sst must contain at least one block")
+            .get_first_key()
     }
 
     pub fn get_last_key(&self) -> TimestampedKey {
-        self.meta_blocks.last().expect("sst must contain at least one block").get_last_key()
+        self.meta_blocks
+            .last()
+            .expect("sst must contain at least one block")
+            .get_last_key()
+    }
+
+    pub fn maybe_contains_key(&self, key: &[u8]) -> bool {
+        self.bloom_filter.maybe_contains(key)
+            && self.get_first_key().get_key() <= key
+            && key <= self.get_last_key().get_key()
     }
 }
 
@@ -117,7 +137,9 @@ impl Sst {
 mod tests {
     use std::sync::Arc;
 
-    use crate::{block::Block, kv::timestamped_key::TimestampedKey, table::test_utils::build_sst_with_cache};
+    use crate::{
+        block::Block, kv::timestamped_key::TimestampedKey, table::test_utils::build_sst_with_cache,
+    };
 
     use super::test_utils::build_sst;
 
