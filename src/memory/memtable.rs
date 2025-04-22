@@ -114,7 +114,7 @@ mod tests {
         );
 
         assert!(memtable.freeze().is_ok());
-        assert_eq!(memtable.mutable.load(Ordering::SeqCst), false);
+        assert!(!memtable.mutable.load(Ordering::SeqCst));
         assert!(memtable.freeze().is_err())
     }
 

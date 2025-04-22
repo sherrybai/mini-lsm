@@ -97,7 +97,7 @@ impl Sst {
         let (mut lo, mut hi) = (0, self.meta_blocks.len() - 1);
         // seek to last block with first_key less than or equal to key
         while lo < hi {
-            let mid = (lo + hi + 1) / 2; // use right mid to avoid infinite loop
+            let mid = (lo + hi).div_ceil(2); // use right mid to avoid infinite loop
             let first_key = self.meta_blocks[mid].get_first_key();
             match first_key.cmp(key) {
                 Ordering::Less => lo = mid,
@@ -105,7 +105,7 @@ impl Sst {
                 Ordering::Equal => return mid,
             }
         }
-        (lo + hi + 1) / 2
+        (lo + hi).div_ceil(2)
     }
 
     pub fn get_id(&self) -> usize {

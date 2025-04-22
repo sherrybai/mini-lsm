@@ -120,7 +120,7 @@ mod tests {
             iterator,
             Bound::Included("k1".as_bytes())
         );
-        let items: Vec<KeyValuePair> = bounded_iterator.into_iter().collect();
+        let items: Vec<KeyValuePair> = bounded_iterator.collect();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].key.get_key(), "k1".as_bytes());
 
@@ -129,7 +129,7 @@ mod tests {
             iterator,
             Bound::Excluded("k1".as_bytes())
         );
-        let items: Vec<KeyValuePair> = bounded_iterator.into_iter().collect();
+        let items: Vec<KeyValuePair> = bounded_iterator.collect();
         assert_eq!(items.len(), 0);
 
         iterator = MemTableIterator::new(&memtable, Bound::Unbounded, Bound::Unbounded);
@@ -137,7 +137,7 @@ mod tests {
             iterator,
             Bound::Unbounded
         );
-        let items: Vec<KeyValuePair> = bounded_iterator.into_iter().collect();
+        let items: Vec<KeyValuePair> = bounded_iterator.collect();
         assert_eq!(items.len(), 2);
     }
 }

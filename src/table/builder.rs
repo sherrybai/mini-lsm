@@ -145,7 +145,7 @@ mod tests {
             .is_ok());
         // new block started
         assert_eq!(builder.block_meta_list.len(), 1);
-        assert!(builder.block_data.len() > 0);
+        assert!(!builder.block_data.is_empty());
 
         // try build
         let dir = tempdir().unwrap();
