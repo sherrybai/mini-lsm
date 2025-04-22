@@ -104,10 +104,10 @@ mod tests {
                 value: "v2".as_bytes().into()
             })
             .is_ok());
-        // 2 * 8 bytes per kv pair
+        // 8 bytes for first kv pair; 9 bytes for subsequent kv pairs
         // 2 * 2 bytes per offset
         // 2 bytes for end of data offset
-        let expected_block_size = 2 * 8 + 2 * 2 + 2;
+        let expected_block_size = 8 + 9 + 2 * 2 + 2;
         assert_eq!(block_builder.get_block_size(), expected_block_size);
         let block = block_builder.build();
         let data = block.encode();
@@ -130,7 +130,7 @@ mod tests {
         let mut file = sst.file;
         let bloom_filter_offset = file.get_bloom_filter_offset().unwrap();
         let meta_block_offset = file.get_meta_block_offset(bloom_filter_offset).unwrap();
-        assert_eq!(meta_block_offset, 34);
+        assert_eq!(meta_block_offset, 35);
 
         let meta_blocks = file.load_meta_blocks(meta_block_offset, bloom_filter_offset).unwrap();
         let expected_meta_1 = BlockMetadata::new(
@@ -139,7 +139,7 @@ mod tests {
             TimestampedKey::new("k2".as_bytes().into()),
         );
         let expected_meta_2 = BlockMetadata::new(
-            22,
+            23,
             TimestampedKey::new("k3".as_bytes().into()),
             TimestampedKey::new("k3".as_bytes().into()),
         );

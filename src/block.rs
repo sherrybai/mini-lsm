@@ -1,3 +1,5 @@
+use bytes::Bytes;
+
 pub mod builder;
 pub mod iterator;
 pub mod metadata;
@@ -52,6 +54,12 @@ impl Block {
             end_of_data_offset,
         }
     }
+
+    pub fn get_first_key(&self) -> Bytes {
+        let key_len = u16::from_be_bytes([self.data[0], self.data[1]]);
+        let key = self.data[2..2+key_len as usize].to_vec();
+        Bytes::from(key)
+    }
 }
 
 #[cfg(test)]
@@ -81,5 +89,7 @@ mod tests {
 
         let decoded_block = Block::decode(actual);
         assert_eq!(block, decoded_block);
+
+        assert_eq!(block.get_first_key(), "k1".as_bytes());
     }
 }
