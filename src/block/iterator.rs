@@ -88,7 +88,7 @@ impl BlockIterator {
                     .expect("chunk of size 2"),
             ) as usize;
             key_vec =
-                self.block.data[key_contents_offset.into()..(key_contents_offset + key_size).into()].to_vec();
+                self.block.data[key_contents_offset..key_contents_offset + key_size].to_vec();
             value_contents_offset = key_contents_offset + key_size + 2;
         } else {
             key_contents_offset = current_offset as usize + 4;
@@ -99,7 +99,7 @@ impl BlockIterator {
             ) as usize;
             let key_overlap = &self.first_key[..key_overlap_len];
             let rest_key_len = u16::from_be_bytes(
-                self.block.data[current_offset as usize + 2..key_contents_offset as usize]
+                self.block.data[current_offset as usize + 2..key_contents_offset]
                     .try_into()
                     .expect("chunk of size 2"),
             ) as usize;
@@ -109,7 +109,7 @@ impl BlockIterator {
         }
         // parse value
         let value_size = u16::from_be_bytes(
-            self.block.data[(value_contents_offset - 2).into()..value_contents_offset.into()]
+            self.block.data[(value_contents_offset - 2)..value_contents_offset]
                 .try_into()
                 .expect("chunk of size 2"),
         ) as usize;

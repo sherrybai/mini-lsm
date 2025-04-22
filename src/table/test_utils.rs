@@ -41,8 +41,7 @@ pub fn build_sst() -> Sst {
     // build
     let dir = tempdir().unwrap();
     let path = dir.path().join("test_sst.sst");
-    let sst = builder.build(0, path, None).unwrap();
-    sst
+    builder.build(0, path, None).unwrap()
 }
 
 pub fn build_sst_with_cache() -> (Sst, Arc<BlockCache>) {
