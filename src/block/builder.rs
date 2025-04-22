@@ -9,6 +9,7 @@ pub struct BlockBuilder {
     offsets: Vec<u16>,
     current_offset: u16,
     block_size: usize,
+    first_key: Vec<u8>,
 }
 
 impl BlockBuilder {
@@ -18,6 +19,7 @@ impl BlockBuilder {
             offsets: Vec::new(),
             current_offset: 0,
             block_size,
+            first_key: Vec::new(),
         }
     }
 
@@ -26,17 +28,41 @@ impl BlockBuilder {
             return Err(anyhow!("max block size reached"));
         }
 
-        let key_len_bytes = u16::try_from(kv_pair.key.get_key().len())?.to_be_bytes();
+        let key_as_bytes: Vec<u8>;
+        if self.first_key.is_empty() {
+            self.first_key = kv_pair.key.get_key().to_vec();
+            let key_len_bytes = u16::try_from(kv_pair.key.get_key().len())?.to_be_bytes();
+            key_as_bytes = vec![key_len_bytes.to_vec(), kv_pair.key.get_key().to_vec()]
+                .into_iter()
+                .flatten()
+                .collect();
+        } else {
+            let key_overlap_len = kv_pair
+                .key
+                .get_key()
+                .iter()
+                .zip(self.first_key.clone())
+                .take_while(|(x, y)| *x == y)
+                .count();
+            let rest_key_len = kv_pair.key.get_key().len() - key_overlap_len;
+            key_as_bytes = vec![
+                u16::try_from(key_overlap_len)?.to_be_bytes().to_vec(),
+                u16::try_from(rest_key_len)?.to_be_bytes().to_vec(),
+                kv_pair.key.get_key()[key_overlap_len..].to_vec(),
+            ].into_iter()
+            .flatten()
+            .collect();
+        }
         let value_len_bytes = u16::try_from(kv_pair.value.len())?.to_be_bytes();
         let kv_as_bytes: Vec<u8> = vec![
-            key_len_bytes.to_vec(),
-            kv_pair.key.get_key().to_vec(),
+            key_as_bytes,
             value_len_bytes.to_vec(),
             kv_pair.value.to_vec(),
         ]
         .into_iter()
         .flatten()
         .collect();
+
         self.offsets.push(self.current_offset);
         self.current_offset += u16::try_from(kv_as_bytes.len())?;
         self.data.extend(kv_as_bytes);
@@ -59,12 +85,17 @@ impl BlockBuilder {
     }
 
     pub fn get_block_size_with_kv(&self, kv: &KeyValuePair) -> usize {
-        self.get_block_size()
-        + 2 // key length
-        + kv.key.get_key().len()
-        + 2 // value length
-        + kv.value.len()
-        + 2 // length of new offset
+        let block_size = self.get_block_size();
+        if block_size == 0 {
+            2 + kv.key.get_key().len() + 2 + kv.value.len() + 2
+        } else {
+            block_size
+            + 4 // key_overlap + rest_key_len
+            + kv.key.get_key().len()
+            + 2 // value length
+            + kv.value.len()
+            + 2 // length of new offset
+        }
     }
 }
 
@@ -97,11 +128,11 @@ mod tests {
         expected_data.extend("k1".as_bytes());
         expected_data.extend(vec![0, 2]);
         expected_data.extend("v1".as_bytes());
-        expected_data.extend(vec![0, 2]);
-        expected_data.extend("k2".as_bytes());
+        expected_data.extend(vec![0, 1, 0, 1]);
+        expected_data.extend("2".as_bytes());
         expected_data.extend(vec![0, 2]);
         expected_data.extend("v2".as_bytes());
-        let expected = Block::new(expected_data, vec![0, 8], 16);
+        let expected = Block::new(expected_data, vec![0, 8], 17);
         assert_eq!(actual, expected);
 
         // check that our calculated size is correct
