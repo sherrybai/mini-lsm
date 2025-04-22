@@ -1,4 +1,4 @@
-use bitvec::{bitvec, field::BitField, vec::BitVec};
+use bitvec::{bitvec, field::BitField, order::Lsb0, vec::BitVec};
 use bytes::Bytes;
 use xxhash_rust::xxh3::xxh3_64;
 
@@ -7,7 +7,7 @@ use crate::kv::timestamped_key::TimestampedKey;
 const FALSE_POSITIVE_RATE: f64 = 0.01;
 
 pub struct BloomFilter {
-    bit_vec: BitVec,
+    bit_vec: BitVec<u8>,
     k: u8
 }
 
@@ -17,7 +17,7 @@ impl BloomFilter {
         let m = Self::get_bit_arr_len(n);
         let k = Self::get_num_hash_functions(m, n);
 
-        let mut bit_vec = bitvec![0; m];
+        let mut bit_vec = bitvec![u8, Lsb0; 0; m];
 
         // set bits for each key
         for key in keys {
@@ -77,11 +77,18 @@ impl BloomFilter {
         bit_vec_bytes.push(self.k);
         Bytes::from(bit_vec_bytes)
     }
+
+    pub fn decode(encoded: Vec<u8>) -> Self {
+        Self {
+            bit_vec: BitVec::from_slice(&encoded[..encoded.len()-1]),
+            k: *encoded.last().unwrap()
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use bitvec::{order::Lsb0, view::AsBits};
+    use bitvec::{order::Lsb0, vec::BitVec};
 
     use crate::kv::timestamped_key::TimestampedKey;
 
@@ -109,15 +116,19 @@ mod tests {
     }
 
     #[test]
-    fn test_encode() {
+    fn test_encode_decode() {
         let k1 = TimestampedKey::new("hello".as_bytes().into());
         let k2 = TimestampedKey::new("world".as_bytes().into());
         let mut bloom_filter = BloomFilter::from_keys(
             vec![&k1, &k2],
         );
-        let mut encoded = bloom_filter.encode();
-        let k = encoded.split_off(encoded.len()-1);
-        assert_eq!(k[0], bloom_filter.k);
-        assert_eq!(encoded.as_bits::<Lsb0>(), bloom_filter.bit_vec);    
+        let encoded = bloom_filter.encode();
+        let k = *encoded.last().unwrap();
+        assert_eq!(k, bloom_filter.k);
+        assert_eq!(BitVec::<u8, Lsb0>::from_slice(&encoded[..encoded.len()-1]), bloom_filter.bit_vec);   
+
+        let decoded = BloomFilter::decode(encoded.into());
+        assert_eq!(decoded.bit_vec, bloom_filter.bit_vec);
+        assert_eq!(decoded.k, bloom_filter.k); 
     }
 }
