@@ -21,7 +21,7 @@ impl BloomFilter {
 
         // set bits for each key
         for key in keys {
-            let indices = Self::get_indices_for_key(key, m, k);
+            let indices = Self::get_indices_for_key(&key.get_key(), m, k);
             for i in indices {
                 bit_vec.set(i, true);
             }
@@ -44,9 +44,9 @@ impl BloomFilter {
         ).round() as u8
     }
 
-    fn get_indices_for_key(key: TimestampedKey, m: usize, k: u8) -> Vec<usize> {
+    fn get_indices_for_key(key: &[u8], m: usize, k: u8) -> Vec<usize> {
         // hash the key
-        let hash64 = xxh3_64(&key.get_key());
+        let hash64 = xxh3_64(key);
         let (h1, h2) = ((hash64 >> 32) as u32, hash64 as u32); 
 
         let mut indices: Vec<usize> = vec![];
@@ -60,7 +60,7 @@ impl BloomFilter {
         indices
     }
 
-    pub fn maybe_contains(&self, key: TimestampedKey) -> bool {
+    pub fn maybe_contains(&self, key: &[u8]) -> bool {
         let indices = Self::get_indices_for_key(key, self.bit_vec.len(), self.k);
         for i in indices {
             if !self.bit_vec[i] {
@@ -108,11 +108,9 @@ mod tests {
         // https://hur.st/bloomfilter/?n=2&p=&m=24&k=
         assert_eq!(bloom_filter.k, 8);
 
-        assert!(bloom_filter.maybe_contains(k1));
-        assert!(bloom_filter.maybe_contains(k2));
-
-        let k3 = TimestampedKey::new("not here".as_bytes().into());
-        assert!(!bloom_filter.maybe_contains(k3));
+        assert!(bloom_filter.maybe_contains(&k1.get_key()));
+        assert!(bloom_filter.maybe_contains(&k2.get_key()));
+        assert!(!bloom_filter.maybe_contains("not here".as_bytes()));
     }
 
     #[test]

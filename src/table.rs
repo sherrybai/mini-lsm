@@ -113,11 +113,23 @@ impl Sst {
     }
 
     pub fn get_first_key(&self) -> TimestampedKey {
-        self.meta_blocks.first().expect("sst must contain at least one block").get_first_key()
+        self.meta_blocks
+            .first()
+            .expect("sst must contain at least one block")
+            .get_first_key()
     }
 
     pub fn get_last_key(&self) -> TimestampedKey {
-        self.meta_blocks.last().expect("sst must contain at least one block").get_last_key()
+        self.meta_blocks
+            .last()
+            .expect("sst must contain at least one block")
+            .get_last_key()
+    }
+
+    pub fn maybe_contains_key(&self, key: &[u8]) -> bool {
+        self.bloom_filter.maybe_contains(key)
+            && self.get_first_key().get_key() <= key
+            && key <= self.get_last_key().get_key()
     }
 }
 
@@ -125,7 +137,9 @@ impl Sst {
 mod tests {
     use std::sync::Arc;
 
-    use crate::{block::Block, kv::timestamped_key::TimestampedKey, table::test_utils::build_sst_with_cache};
+    use crate::{
+        block::Block, kv::timestamped_key::TimestampedKey, table::test_utils::build_sst_with_cache,
+    };
 
     use super::test_utils::build_sst;
 
